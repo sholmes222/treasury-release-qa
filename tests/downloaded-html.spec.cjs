@@ -5,7 +5,7 @@ const { pathToFileURL } = require('node:url');
 const crypto = require('node:crypto');
 
 const origin = 'https://the-treasury.samuelsmanuals.com';
-const blankHash = '98f44380dc38040758f1f8096beb794d579551932112f8216cd0777596225d46';
+const blankHash = 'f2d61e57cbb2c617b5144259b6786a6b5918553ed16c463aead65a4bc2351e70';
 const fixture = path.resolve(__dirname, '../fixtures/payments.csv');
 const note = 'Fictional QA: keep a bicycle repair buffer.';
 const goal = 'Fictional QA buffer';
@@ -65,6 +65,10 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   await page.goto(pathToFileURL(blank).href);
   expect(new URL(page.url()).protocol).toBe('file:');
   await enter(page);
+  await expect(page.locator('footer').getByRole('button', { name: 'Release notes', exact: true })).toBeAttached();
+  await expect(page.locator('#release-notes')).toContainText('Release 1.0.0');
+  await expect(page.locator('#release-notes')).toContainText('Windows, macOS Safari and mobile operating systems have not been tested.');
+  expect(bytes.toString()).not.toContain('Beta testing:');
   await importCSV(page);
   await expect(page.locator('#spending')).toContainText('£947.65');
 
