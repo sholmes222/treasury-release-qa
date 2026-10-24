@@ -1,0 +1,46 @@
+name: Treasury downloaded HTML
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  file-origin:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - run: npm test
+      - name: Record results in free job logs and summary
+        if: always()
+        run: |
+          node <<'JS'
+          const fs = require('node:fs');
+          const filename = 'test-results/results.json';
+          if (!fs.existsSync(filename)) {
+            console.log('No test report produced; setup or test launch failed.');
+            process.exit(0);
+          }
+          const report = JSON.parse(fs.readFileSync(filename, 'utf8'));
+          const rows = [];
+          function walk(suites) {
+            for (const suite of suites || []) {
+              for (const spec of suite.specs || []) for (const test of spec.tests || []) {
+                rows.push({browser: test.projectName, outcome: test.status,
+                  results: test.results.map(result => ({status: result.status,
+                    errors: result.errors.map(error => error.message)}))});
+              }
+              walk(suite.suites);
+            }
+          }
+          walk(report.suites);
+          console.log('TREASURY_FILE_ORIGIN_RESULTS=' + JSON.stringify({rows, stats: report.stats}));
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+            '# Treasury file-origin results\n\n' + rows.map(row =>
+              '- ' + row.browser + ': ' + row.outcome).join('\n') +
+            '\n\nPublic blank app and invented data only. No retained artifacts or caches.\n');
+          JS
