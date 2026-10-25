@@ -5,7 +5,7 @@ const { pathToFileURL } = require('node:url');
 const crypto = require('node:crypto');
 
 const origin = 'https://the-treasury.samuelsmanuals.com';
-const blankHash = '79295b6b46c3f9582bd48e16c8a2a1a8e768aed2a9cd554c0c0e98b8e688633f';
+const blankHash = '158ca12bd72f7a6850120d51aa221ab6fc9b5c106676f8c2a46a3d846c33da91';
 const fixture = path.resolve(__dirname, '../fixtures/payments.csv');
 const note = 'Fictional QA: keep a bicycle repair buffer.';
 const goal = 'Fictional QA buffer';
@@ -42,6 +42,83 @@ async function importCSV(page, existing = false) {
   await expect(page.locator('#import-panel')).not.toBeVisible();
 }
 
+
+async function appearanceChecks(page, draft = false) {
+  await page.locator('#appearance-open').click();
+  await expect(page.locator('#appearance-panel')).toBeVisible();
+  await expect(page.locator('dialog[open]')).toHaveCount(0);
+  await expect(page.locator('#appearance-open')).toHaveAttribute('aria-expanded', 'true');
+  for (const skin of ['sleek', 'medieval', 'gold']) {
+    await page.locator('[data-skin-choice="' + skin + '"]').click();
+    for (const mode of ['light', 'dark']) {
+      const current = await page.locator('body').getAttribute('data-mode');
+      if (current !== mode) await page.locator('#appearance-mode').click();
+      await expect(page.locator('body')).toHaveAttribute('data-mode', mode);
+      await expect(page.locator('body')).toHaveAttribute('data-skin', skin);
+      await expect(page.locator('#appearance-panel')).toBeVisible();
+      expect(await page.evaluate(() => getComputedStyle(document.querySelector('#help')).color === getComputedStyle(document.querySelector('#guidance h2')).color)).toBe(true);
+      if (draft) await expect(page.locator('#guidance-text')).toHaveValue('Fictional QA unfinished appearance draft.');
+    }
+  }
+  await page.locator('#appearance-mode').press('Escape');
+  await expect(page.locator('#appearance-panel')).toBeHidden();
+  await expect(page.locator('#appearance-open')).toBeFocused();
+  await page.locator('#appearance-open').click();
+  await page.locator('#data-open').click();
+  await expect(page.locator('#appearance-panel')).toBeHidden();
+  await expect(page.locator('#data-panel')).toBeVisible();
+  await expect(page.locator('#data-view-title')).toBeVisible();
+  await page.locator('#data-panel [data-close-dialog]').click();
+}
+async function blankDownloadCheck(page, button, help, info, name, reference) {
+  await expect(button).toHaveClass(/blank-download/);
+  expect(await button.evaluate(el => getComputedStyle(el).backgroundColor)).toBe('rgb(227, 194, 110)');
+  await button.focus();
+  await help.hover();
+  await expect(help).toHaveAttribute('aria-expanded', 'true');
+  await page.keyboard.press('Escape');
+  await expect(help).toHaveAttribute('aria-expanded', 'false');
+  await button.hover();
+  await help.hover();
+  await expect(help).toHaveAttribute('aria-expanded', 'true');
+  await help.click();
+  const tip = page.locator('#' + await help.getAttribute('aria-describedby'));
+  await expect(tip).toBeVisible();
+  await expect(tip).toContainText('trusted browser');
+  await expect(tip).toContainText('unencrypted');
+  await help.press('Escape');
+  await expect(tip).toBeHidden();
+  await expect(help).toBeFocused();
+  // Tab from the actual download focuses the same explanation without a pointer.
+  await button.press('Tab');
+  await expect(help).toBeFocused();
+  // A focus transition is required after Escape, so Tab away and back.
+  await help.press('Tab');
+  await page.keyboard.press('Shift+Tab');
+  await expect(tip).toBeVisible();
+  await help.press('Escape');
+  const waiting = page.waitForEvent('download');
+  await button.click();
+  const download = await waiting;
+  const destination = info.outputPath('blank-' + name + '.html');
+  await download.saveAs(destination);
+  expect(download.suggestedFilename()).toBe('Treasury.html');
+  const clicked = await fs.readFile(destination, 'utf8');
+  // Compose adds a fresh empty spending-preference identity, so click-downloads
+  // intentionally differ from the static blank's hash. Code and blank records must match.
+  expect(inert(clicked, 'source-bundle')).toEqual(inert(reference, 'source-bundle'));
+  expect(inert(clicked, 'ledger-data')).toEqual(inert(reference, 'ledger-data'));
+  expect(inert(clicked, 'view-state')).toEqual({});
+  expect(inert(clicked, 'demo-data')).toEqual(inert(reference, 'demo-data'));
+  const scripts = raw => [...raw.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match => match[1]);
+  expect(scripts(clicked)).toEqual(scripts(reference));
+  expect(clicked.startsWith(inert(reference, 'source-bundle').head)).toBe(true);
+  const meta = inert(clicked, 'backup-metadata');
+  const spending = meta.envelope_fields.treasury_spending_view;
+  expect(spending.excluded).toEqual([]);expect(spending.work).toBe(false);
+  expect(spending.scope).toBe('treasury-spending-view');
+}
+
 test('downloaded file imports, edits, saves, reopens and restores without network', async ({ browser }, info) => {
   // This executes only on the independent CI VM. Never on a desktop profile.
   const response = await fetch(origin + '/Treasury.html', {
@@ -59,14 +136,36 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
 
   const online = await browser.newContext();
   const publicPage = await online.newPage();
-  await publicPage.goto(origin + '/?qa=1.1.2');
-  await expect(publicPage.locator('#treasury-favicon')).toHaveAttribute('href', '/favicon.png?v=1.1.2');
+  await publicPage.goto(origin + '/?qa=1.2.0');
+  await expect(publicPage.locator('#treasury-favicon')).toHaveAttribute('href', '/favicon.png?v=1.2.0');
   for (const [name, mime, hash] of [['favicon.png','image/png','2e57cbc6f14c28ccf0dd0c60cb22fcd54ce16934c476528e9b8001f1cf5ba513'],['favicon.ico','image/vnd.microsoft.icon','3067b468e8430d44063885801d8f549f0dc6a84c88384bd9df86844bca0f2368']]) {
-    const icon = await fetch(origin + '/' + name + '?v=1.1.2', {headers:{'User-Agent':'Mozilla/5.0 (compatible; TreasuryReleaseQA/1.0)'}});
+    const icon = await fetch(origin + '/' + name + '?v=1.2.0', {headers:{'User-Agent':'Mozilla/5.0 (compatible; TreasuryReleaseQA/1.0)'}});
     expect(icon.status).toBe(200); expect(icon.headers.get('content-type')).toBe(mime);
     expect(crypto.createHash('sha256').update(Buffer.from(await icon.arrayBuffer())).digest('hex')).toBe(hash);
   }
   expect(await publicPage.evaluate(async () => {const img=new Image();img.src=document.querySelector('#treasury-favicon').href;await img.decode();return img.naturalWidth===64&&img.naturalHeight===64;})).toBe(true);
+
+  await blankDownloadCheck(publicPage, publicPage.locator('#guide-download'), publicPage.locator('#guide .download-help'), info, 'welcome', bytes.toString());
+  await expect(publicPage.locator('#guide')).toBeVisible();
+  await publicPage.locator('#guide-explore').click();
+  await appearanceChecks(publicPage);
+  await blankDownloadCheck(publicPage, publicPage.locator('#dock-import'), publicPage.locator('.dock-tools .download-help'), info, 'dock', bytes.toString());
+  await blankDownloadCheck(publicPage, publicPage.locator('#mode .download-link'), publicPage.locator('#mode .download-help'), info, 'notice', bytes.toString());
+  await publicPage.locator('#data-open').click();
+  await blankDownloadCheck(publicPage, publicPage.locator('#data-import'), publicPage.locator('#data-panel .download-help'), info, 'data', bytes.toString());
+  await expect(publicPage.locator('#data-panel')).toBeVisible();
+  await publicPage.locator('#data-panel [data-close-dialog]').click();
+  await publicPage.locator('#help').click();
+  await blankDownloadCheck(publicPage, publicPage.locator('#help-entry'), publicPage.locator('#help-panel .download-help'), info, 'help', bytes.toString());
+  await expect(publicPage.locator('#help-panel')).toBeVisible();
+  await publicPage.locator('#help-close').click();
+  await publicPage.setViewportSize({width:390,height:844});
+  await publicPage.locator('#appearance-open').click();
+  const panelBox = await publicPage.locator('#appearance-panel').boundingBox();
+  expect(panelBox.x).toBeGreaterThanOrEqual(0);expect(panelBox.x+panelBox.width).toBeLessThanOrEqual(390);
+  expect(await publicPage.locator('#dock-import svg').evaluate(el=>getComputedStyle(el).display)).toBe('block');
+  await publicPage.locator('#appearance-close').click();
+
   await online.close();
 
   const context = await browser.newContext({ acceptDownloads: true, offline: true });
@@ -87,6 +186,23 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
     const image = new Image(); image.src = link.href; await image.decode();
     return image.naturalWidth > 0 && image.naturalHeight > 0 && link.href.startsWith('data:image/png;base64,');
   })).toBe(true);
+
+
+  await expect(page.locator('#dock-import')).not.toHaveClass(/blank-download/);
+  await expect(page.locator('.dock-tools .download-help')).toBeHidden();
+  await page.locator('#data-open').click();
+  await expect(page.locator('#data-import')).toHaveText('Import payments or restore a copy');
+  await expect(page.locator('#data-import')).not.toHaveClass(/blank-download/);
+  await expect(page.locator('#data-panel .download-help')).toBeHidden();
+  await page.locator('#data-panel [data-close-dialog]').click();
+  await expect(page.locator('#include-current')).toBeVisible();
+  await expect(page.locator('.cash-display-options summary')).toHaveCount(0);
+  await page.locator('#show-markers').check();
+  await page.getByRole('button', {name:'Add strategic note',exact:true}).click();
+  await page.locator('#guidance-text').fill('Fictional QA unfinished appearance draft.');
+  await appearanceChecks(page, true);
+  await expect(page.locator('#show-markers')).toBeChecked();
+  await page.locator('#guidance-cancel').click();
 
   await importCSV(page);
   for (const [section, total] of [['cash', 'kpis'], ['spending', 'spend-note'], ['baseline', 'baseline-kpis'], ['charity', 'giving-total'], ['investments', 'savings-kpis'], ['home', 'mortgage-kpis'], ['income', 'income-kpis']]) {
