@@ -67,7 +67,11 @@ async function appearanceChecks(page, draft = false) {
     const leaks=await page.evaluate(()=>{const out=[];for(const el of document.querySelectorAll('.panel svg [fill],.panel svg [stroke],.section-nav a,.panel h2,.dock-tools button,.action,#values-legend [data-account-color]')){if(!el.getClientRects().length)continue;const cs=getComputedStyle(el);for(const prop of ['color','fill','stroke','backgroundColor']){const color=cs[prop],m=color?.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/);if(!m)continue;const [r,g,b]=m.slice(1).map(Number);if(Math.max(r,g,b)-Math.min(r,g,b)>40&&!(r>=g&&g>=b&&r-b>20))out.push({prop,color});}}return out;});
     expect(leaks).toEqual([]);
     expect(await page.locator('.panel svg text[fill]').evaluateAll(nodes=>nodes.filter(el=>el.getClientRects().length).every(el=>getComputedStyle(el).stroke==='none'))).toBe(true);
-    await expect(page.locator('.mortgage-chart-key')).toContainText('base projection (thin), with extra payment (thick)');
+    if(draft) await expect(page.locator('.mortgage-chart-key')).toHaveCount(0); // Blank copy has no mortgage records.
+    else {
+      await expect(page.locator('.mortgage-chart-key')).toContainText('base projection (thin), with extra payment (thick)');
+      await expect(page.locator('#mortgage-chart svg')).toHaveAttribute('aria-label',/thin dashed line is the base projection; the thick dashed line includes extra payment/);
+    }
     if(draft)await expect(page.locator('#guidance-text')).toHaveValue('Fictional QA unfinished appearance draft.');
   }
   await page.locator('#monochrome-colors').uncheck();
