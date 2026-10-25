@@ -1,0 +1,114 @@
+{
+  "privacy": "All transaction values and identifiers are invented. No customer statement or account was accessed.",
+  "profiles": [
+    {
+      "id": "monzo-historical-2020",
+      "source": "https://community.monzo.com/t/csv-exports/89487/69",
+      "certainty": "Historical bank staff header list, March 2020. Current export layout unverified.",
+      "provenance": "Constructed from documented field descriptions or retained historical layout; every record value is invented. Not a customer export.",
+      "raw": "Transaction ID,Date,Time,Type,Name,Emoji,Category,Amount,Currency,Local amount,Local currency,Notes and #tags,Address,Receipt,Description\r\ninvented-a,01/06/2026,12:00:00,card,Invented pay,,,1000.01,GBP,-14.02,EUR,,,,\r\ninvented-b,02/06/2026,12:00:00,card,\"Invented café, shop\",,,-12.34,GBP,-14.02,EUR,,,,\r\ninvented-c,03/06/2026,12:00:00,card,Invented refund,,,3.05,GBP,-14.02,EUR,,,,\r\n",
+      "options": {},
+      "expected_minor": [
+        100001,
+        -1234,
+        305
+      ],
+      "expected_columns": {
+        "date": 1,
+        "merchant": 4,
+        "amount": 7,
+        "external_id": 0
+      }
+    },
+    {
+      "id": "starling-historical-eight-column",
+      "source": "https://www.starlingbank.com/features/statements/",
+      "certainty": "Bank confirms CSV availability only. Retained historical eight-column layout from prior organisational evidence; not freshly downloaded or current-certified.",
+      "provenance": "Constructed from documented field descriptions or retained historical layout; every record value is invented. Not a customer export.",
+      "raw": "Date,Counter Party,Reference,Type,Amount (GBP),Balance (GBP),Spending Category,Notes\r\n01/06/2026,Invented pay,invented reference,FASTER PAYMENT,1000.01,2000.01,,\r\n02/06/2026,\"Invented café, shop\",invented reference,FASTER PAYMENT,-12.34,2000.01,,\r\n03/06/2026,Invented refund,invented reference,FASTER PAYMENT,3.05,2000.01,,\r\n",
+      "options": {},
+      "expected_minor": [
+        100001,
+        -1234,
+        305
+      ],
+      "expected_columns": {
+        "date": 0,
+        "merchant": 1,
+        "amount": 4
+      }
+    },
+    {
+      "id": "lloyds-commercial-signed",
+      "source": "https://resources.lloydsbank.com/uploadedFiles/CBOnline_upgrade/Pages/Activity_checklist/Exporting_data/col-exports-csv-balance-transaction.pdf",
+      "certainty": "Retained documented Commercial Banking Online profile. Search index confirms guide; direct PDF returned bank error in this research pass. Consumer layout unverified.",
+      "provenance": "Constructed from documented field descriptions or retained historical layout; every record value is invented. Not a customer export.",
+      "raw": "Post Date,Account Number,Account Name,Type,Amount,Customer Reference,Transaction Detail,Balance\r\n01/06/2026,00000000,Invented account,FPI,1000.01,invented reference,Invented pay,2000.01\r\n02/06/2026,00000000,Invented account,FPI,-12.34,invented reference,\"Invented café, shop\",2000.01\r\n03/06/2026,00000000,Invented account,FPI,3.05,invented reference,Invented refund,2000.01\r\n",
+      "options": {},
+      "expected_minor": [
+        100001,
+        -1234,
+        305
+      ],
+      "expected_columns": {
+        "date": 0,
+        "merchant": 6,
+        "amount": 4
+      }
+    },
+    {
+      "id": "rbs-bankline-statement-signed",
+      "source": "https://www.rbs.co.uk/content/dam/rbs_co_uk/Business_and_Content/PDFs/Bankline/Export-file-layout-guide-Bankline-CSV-format_RBoS.pdf",
+      "certainty": "January 2025 guide page 6, signed statement/account-information export. Column labels constructed from field descriptions. First narrative line selected; all continuation evidence retained in raw source.",
+      "provenance": "Constructed from documented field descriptions or retained historical layout; every record value is invented. Not a customer export.",
+      "raw": "Sort code of account,Account number,Account alias,Account short name,Currency of account,BIC,Bank name,Branch name,Date of transaction,Transaction narrative – 1st line,Transaction narrative – 2nd line,Transaction narrative – 3rd line,Transaction narrative – 4th line,Transaction narrative – 5th line,Transaction type,Transaction reference,Value date of transaction,Amount,Ledger balance,Account type,Opening balance,Closing balance\r\n000000,00000000,Invented account,Invented short name,GBP,INVENTED,Invented bank,Invented branch,01/06/2026,Invented pay,Invented continuation,,,,FPI,invented reference,01/06/2026,1000.01,2000.01,CHECKING,1000.00,2000.01\r\n000000,00000000,Invented account,Invented short name,GBP,INVENTED,Invented bank,Invented branch,02/06/2026,\"Invented café, shop\",Invented continuation,,,,FPI,invented reference,01/06/2026,-12.34,2000.01,CHECKING,1000.00,2000.01\r\n000000,00000000,Invented account,Invented short name,GBP,INVENTED,Invented bank,Invented branch,03/06/2026,Invented refund,Invented continuation,,,,FPI,invented reference,01/06/2026,3.05,2000.01,CHECKING,1000.00,2000.01\r\n",
+      "options": {},
+      "expected_minor": [
+        100001,
+        -1234,
+        305
+      ],
+      "expected_columns": {
+        "date": 8,
+        "merchant": 9,
+        "amount": 17
+      }
+    },
+    {
+      "id": "rbs-bankline-transaction-search",
+      "source": "https://www.rbs.co.uk/content/dam/rbs_co_uk/Business_and_Content/PDFs/Bankline/Export-file-layout-guide-Bankline-CSV-format_RBoS.pdf",
+      "certainty": "January 2025 guide page 8. Labels constructed from documented field descriptions. First narrative line selected; no assumption that Transaction Reference is a unique ID.",
+      "provenance": "Constructed from documented field descriptions or retained historical layout; every record value is invented. Not a customer export.",
+      "raw": "Sort code of account,Account number,Account alias,Account short name,Currency,Posting Date,Transaction narrative – 1st line,Transaction narrative – 2nd line,Transaction narrative – 3rd line,Transaction narrative – 4th line,Transaction narrative – 5th line,Transaction Type,Transaction Reference,Value Date of Transaction,Amount\r\n000000,00000000,Invented account,Invented short name,GBP,01/06/2026,Invented pay,Invented continuation,,,,FPI,invented reference,01/06/2026,1000.01\r\n000000,00000000,Invented account,Invented short name,GBP,02/06/2026,\"Invented café, shop\",Invented continuation,,,,FPI,invented reference,01/06/2026,-12.34\r\n000000,00000000,Invented account,Invented short name,GBP,03/06/2026,Invented refund,Invented continuation,,,,FPI,invented reference,01/06/2026,3.05\r\n",
+      "options": {},
+      "expected_minor": [
+        100001,
+        -1234,
+        305
+      ],
+      "expected_columns": {
+        "date": 5,
+        "merchant": 6,
+        "amount": 14
+      }
+    },
+    {
+      "id": "rbs-bankline-supplementary",
+      "source": "https://www.rbs.co.uk/content/dam/rbs_co_uk/Business_and_Content/PDFs/Bankline/Export-file-layout-guide-Bankline-CSV-format_RBoS.pdf",
+      "certainty": "January 2025 guide page 7. Labels constructed from documented field descriptions; supplementary items, not full-account coverage.",
+      "provenance": "Constructed from documented field descriptions or retained historical layout; every record value is invented. Not a customer export.",
+      "raw": "Sort code,Account number,Account alias,Account short name,Currency,Posting date,Narrative,Amount\r\n000000,00000000,Invented account,Invented short name,GBP,01/06/2026,Invented pay,1000.01\r\n000000,00000000,Invented account,Invented short name,GBP,02/06/2026,\"Invented café, shop\",-12.34\r\n000000,00000000,Invented account,Invented short name,GBP,03/06/2026,Invented refund,3.05\r\n",
+      "options": {},
+      "expected_minor": [
+        100001,
+        -1234,
+        305
+      ],
+      "expected_columns": {
+        "date": 5,
+        "merchant": 6,
+        "amount": 7
+      }
+    }
+  ]
+}

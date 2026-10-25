@@ -1,6 +1,6 @@
 # Treasury downloaded-file QA
 
-A finite, independently hosted file-origin test for the public Treasury release 1.2.0.
+A finite, independently hosted file-origin test for the public Treasury release 1.3.0.
 It downloads only the public blank HTML and verifies SHA256 before execution.
 The three-row CSV is invented, with no real bank/customer identifiers.
 
@@ -27,3 +27,5 @@ runners are free under GitHub's current documented terms; do not use larger or
 paid runners or enable billing.
 
 Release 1.2.0 adds exact blank-download checks in all five public contexts, hover/focus/tap explanations, non-modal appearance through all skins and modes, narrow-screen icon/panel checks, direct common settings and offline draft preservation. Local Import and populated-copy saves keep their original lifecycle checks.
+
+Release 1.3.0 also checks the welcome order/copy, one dock Help control and saved gold-white preference. A second native file test uses two documented RBS Bankline layouts with invented rows, repeat import, exact original CSV retention, fresh saved-HTML reopen, and unmapped foreign-currency/mixed-account refusal. This is constructed format coverage, not a claim of customer-export certification.

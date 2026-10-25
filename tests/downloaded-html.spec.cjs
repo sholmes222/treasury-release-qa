@@ -5,7 +5,7 @@ const { pathToFileURL } = require('node:url');
 const crypto = require('node:crypto');
 
 const origin = 'https://the-treasury.samuelsmanuals.com';
-const blankHash = '158ca12bd72f7a6850120d51aa221ab6fc9b5c106676f8c2a46a3d846c33da91';
+const blankHash = 'e418d07a2531363f7559fbc6007e098e91fd854a22daf2fb2fabeecb3e07b86a';
 const fixture = path.resolve(__dirname, '../fixtures/payments.csv');
 const note = 'Fictional QA: keep a bicycle repair buffer.';
 const goal = 'Fictional QA buffer';
@@ -60,6 +60,17 @@ async function appearanceChecks(page, draft = false) {
       if (draft) await expect(page.locator('#guidance-text')).toHaveValue('Fictional QA unfinished appearance draft.');
     }
   }
+  await page.locator('#monochrome-colors').check();
+  for(const mode of ['light','dark']){
+    if(await page.locator('body').getAttribute('data-mode')!==mode)await page.locator('#appearance-mode').click();
+    await expect(page.locator('body')).toHaveAttribute('data-colors','gold_white');
+    const leaks=await page.evaluate(()=>{const out=[];for(const el of document.querySelectorAll('.panel svg [fill],.panel svg [stroke],.section-nav a,.panel h2,.dock-tools button,.action,#values-legend [data-account-color]')){if(!el.getClientRects().length)continue;const cs=getComputedStyle(el);for(const prop of ['color','fill','stroke','backgroundColor']){const color=cs[prop],m=color?.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/);if(!m)continue;const [r,g,b]=m.slice(1).map(Number);if(Math.max(r,g,b)-Math.min(r,g,b)>40&&!(r>=g&&g>=b&&r-b>20))out.push({prop,color});}}return out;});
+    expect(leaks).toEqual([]);
+    expect(await page.locator('.panel svg text[fill]').evaluateAll(nodes=>nodes.filter(el=>el.getClientRects().length).every(el=>getComputedStyle(el).stroke==='none'))).toBe(true);
+    await expect(page.locator('.mortgage-chart-key')).toContainText('base projection (thin), with extra payment (thick)');
+    if(draft)await expect(page.locator('#guidance-text')).toHaveValue('Fictional QA unfinished appearance draft.');
+  }
+  await page.locator('#monochrome-colors').uncheck();
   await page.locator('#appearance-mode').press('Escape');
   await expect(page.locator('#appearance-panel')).toBeHidden();
   await expect(page.locator('#appearance-open')).toBeFocused();
@@ -73,6 +84,7 @@ async function appearanceChecks(page, draft = false) {
 async function blankDownloadCheck(page, button, help, info, name, reference) {
   await expect(button).toHaveClass(/blank-download/);
   expect(await button.evaluate(el => getComputedStyle(el).backgroundColor)).toBe('rgb(227, 194, 110)');
+  if (help) {
   await button.focus();
   await help.hover();
   await expect(help).toHaveAttribute('aria-expanded', 'true');
@@ -97,6 +109,7 @@ async function blankDownloadCheck(page, button, help, info, name, reference) {
   await page.keyboard.press('Shift+Tab');
   await expect(tip).toBeVisible();
   await help.press('Escape');
+  }
   const waiting = page.waitForEvent('download');
   await button.click();
   const download = await waiting;
@@ -136,20 +149,24 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
 
   const online = await browser.newContext();
   const publicPage = await online.newPage();
-  await publicPage.goto(origin + '/?qa=1.2.0');
-  await expect(publicPage.locator('#treasury-favicon')).toHaveAttribute('href', '/favicon.png?v=1.2.0');
+  await publicPage.goto(origin + '/?qa=1.3.0');
+  await expect(publicPage.locator('#treasury-favicon')).toHaveAttribute('href', '/favicon.png?v=1.3.0');
   for (const [name, mime, hash] of [['favicon.png','image/png','2e57cbc6f14c28ccf0dd0c60cb22fcd54ce16934c476528e9b8001f1cf5ba513'],['favicon.ico','image/vnd.microsoft.icon','3067b468e8430d44063885801d8f549f0dc6a84c88384bd9df86844bca0f2368']]) {
-    const icon = await fetch(origin + '/' + name + '?v=1.2.0', {headers:{'User-Agent':'Mozilla/5.0 (compatible; TreasuryReleaseQA/1.0)'}});
+    const icon = await fetch(origin + '/' + name + '?v=1.3.0', {headers:{'User-Agent':'Mozilla/5.0 (compatible; TreasuryReleaseQA/1.0)'}});
     expect(icon.status).toBe(200); expect(icon.headers.get('content-type')).toBe(mime);
     expect(crypto.createHash('sha256').update(Buffer.from(await icon.arrayBuffer())).digest('hex')).toBe(hash);
   }
   expect(await publicPage.evaluate(async () => {const img=new Image();img.src=document.querySelector('#treasury-favicon').href;await img.decode();return img.naturalWidth===64&&img.naturalHeight===64;})).toBe(true);
 
+  await expect(publicPage.locator('#guide-download-purpose')).toHaveText('Download your own blank treasury file and open in browser to fill in with your data');
+  await expect(publicPage.locator('#guide-explore-purpose')).toHaveText('Check out visualisations with example Steve’s demo data.');
+  expect(await publicPage.locator('#guide .welcome-choice').evaluateAll(nodes=>nodes.map(el=>el.dataset.welcomePath))).toEqual(['guide','download','explore']);
+  await expect(publicPage.locator('.dock-tools .download-help')).toHaveCount(0);
   await blankDownloadCheck(publicPage, publicPage.locator('#guide-download'), publicPage.locator('#guide .download-help'), info, 'welcome', bytes.toString());
   await expect(publicPage.locator('#guide')).toBeVisible();
   await publicPage.locator('#guide-explore').click();
   await appearanceChecks(publicPage);
-  await blankDownloadCheck(publicPage, publicPage.locator('#dock-import'), publicPage.locator('.dock-tools .download-help'), info, 'dock', bytes.toString());
+  await blankDownloadCheck(publicPage, publicPage.locator('#dock-import'), null, info, 'dock', bytes.toString());
   await blankDownloadCheck(publicPage, publicPage.locator('#mode .download-link'), publicPage.locator('#mode .download-help'), info, 'notice', bytes.toString());
   await publicPage.locator('#data-open').click();
   await blankDownloadCheck(publicPage, publicPage.locator('#data-import'), publicPage.locator('#data-panel .download-help'), info, 'data', bytes.toString());
@@ -201,6 +218,10 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   await page.getByRole('button', {name:'Add strategic note',exact:true}).click();
   await page.locator('#guidance-text').fill('Fictional QA unfinished appearance draft.');
   await appearanceChecks(page, true);
+  await page.locator('#appearance-open').click();
+  await page.locator('#monochrome-colors').check();
+  await expect(page.locator('body')).toHaveAttribute('data-colors','gold_white');
+  await page.locator('#appearance-close').click();
   await expect(page.locator('#show-markers')).toBeChecked();
   await page.locator('#guidance-cancel').click();
 
@@ -270,6 +291,7 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   const raw = await fs.readFile(saved, 'utf8');
   const ledger = inert(raw, 'ledger-data'), view = inert(raw, 'view-state');
   expect(ledger).toEqual(inert(beforeTour, 'ledger-data'));
+  expect(view.appearance.colors).toBe('gold_white');
   for (const key of ['goals', 'drafts', 'folded']) expect(view[key]).toEqual(inert(beforeTour, 'view-state')[key]);
   expect(ledger.transactions).toHaveLength(4);
   expect(ledger.transactions.reduce((sum, row) => sum + row.amount_minor, 0)).toBe(154001);
@@ -290,7 +312,19 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   await expect(second.locator('#spending')).toContainText('£959.99');
   await expect(second.locator('#guidance')).toContainText(note);
   await expect(second.locator('.goal-card')).toContainText(goal);
+  await expect(second.locator('body')).toHaveAttribute('data-colors','gold_white');
+  await second.locator('#appearance-open').click();await second.locator('#monochrome-colors').uncheck();await second.locator('#appearance-close').click();
+  await second.reload();await enter(second);await expect(second.locator('body')).toHaveAttribute('data-colors','gold_white');
   const backup = await save(second, info, '#save-json', 'My-Treasury.json');
+  // The same saved file must override a later, opposite device preference in both directions.
+  await second.locator('#appearance-open').click();await second.locator('#monochrome-colors').uncheck();await second.locator('#appearance-close').click();
+  const semanticFile=await save(second,info,'#save-html','Semantic-Treasury.html'),semanticRaw=await fs.readFile(semanticFile,'utf8');
+  expect(inert(semanticRaw,'view-state').appearance.colors).toBe('semantic');expect(inert(semanticRaw,'ledger-data')).toEqual(ledger);
+  await second.goto(pathToFileURL(semanticFile).href);await enter(second);await expect(second.locator('body')).toHaveAttribute('data-colors','semantic');
+  await second.locator('#appearance-open').click();await second.locator('#monochrome-colors').check();await second.locator('#appearance-close').click();
+  await second.reload();await enter(second);await expect(second.locator('body')).toHaveAttribute('data-colors','semantic');
+  await expect(second.locator('#spending')).toContainText('£959.99');
+
   await second.screenshot({ path: info.outputPath('reopened.png'), fullPage: false });
   await reopened.close();
 
@@ -305,9 +339,42 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   await expect(third.locator('#import-preview')).toBeVisible();
   await third.locator('#apply-import').click();
   await expect(third.locator('#spending')).toContainText('£959.99');
+  await expect(third.locator('body')).toHaveAttribute('data-colors','gold_white');
   await expect(third.locator('#guidance')).toContainText(note);
   await expect(third.locator('.goal-card')).toContainText(goal);
   expect(errors).toEqual([]);
   expect(external).toEqual([]);
   await restored.close();
+});
+
+
+test('documented Bankline files import and recover with precise currency and account boundaries', async ({browser},info)=>{
+ const profiles=require('../fixtures/bank-layouts.json').profiles.filter(p=>['rbs-bankline-statement-signed','rbs-bankline-transaction-search'].includes(p.id));
+ const response=await fetch(origin+'/Treasury.html',{headers:{'User-Agent':'Mozilla/5.0 (compatible; TreasuryReleaseQA/1.0)'},redirect:'error',signal:AbortSignal.timeout(30000)});
+ expect(response.status).toBe(200);const bytes=Buffer.from(await response.arrayBuffer());expect(crypto.createHash('sha256').update(bytes).digest('hex')).toBe(blankHash);
+ const blank=info.outputPath('Bank-import-Treasury.html');await fs.writeFile(blank,bytes);
+ for(const profile of profiles){
+  const csv=info.outputPath(profile.id+'.csv');await fs.writeFile(csv,profile.raw);
+  const context=await browser.newContext({acceptDownloads:true,offline:true}),page=await context.newPage(),errors=[],external=[];
+  page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>{if(/^https?:/.test(request.url()))external.push(request.url());});
+  await page.goto(pathToFileURL(blank).href);await enter(page);
+  async function importProfile(existing=false){await page.locator('#dock-import').click();await page.locator('#import').setInputFiles(csv);await expect(page.locator('#csv-mapping')).toBeVisible();
+   if(existing)await page.locator('#csv-account').selectOption({label:'Invented Bankline QA'});else await page.locator('#csv-account-name').fill('Invented Bankline QA');
+   await page.locator('#preview-csv').click();await expect(page.locator('#import-preview')).toBeVisible();await page.locator('#apply-import').click();await expect(page.locator('#import-panel')).toBeHidden();}
+  await importProfile();await expect(page.locator('#spending')).toContainText('£12.34');await importProfile(true);
+  const saved=await save(page,info,'#save-html',profile.id+'-saved.html'),raw=await fs.readFile(saved,'utf8'),ledger=inert(raw,'ledger-data');
+  expect(ledger.transactions.map(t=>t.amount_minor)).toEqual(profile.expected_minor);expect(ledger.import_sources).toHaveLength(1);expect(ledger.import_sources[0].raw).toBe(profile.raw);expect(ledger.transaction_coverage.basis).toBe('observed');
+  const reopened=await browser.newContext({offline:true}),fresh=await reopened.newPage();await fresh.goto(pathToFileURL(saved).href);await enter(fresh);await expect(fresh.locator('#spending')).toContainText('£12.34');await reopened.close();
+  // Clearing the optional currency mapping cannot hide an explicit foreign account currency.
+  if(profile.id==='rbs-bankline-statement-signed'){
+   for(const [name,raw] of [['foreign-account',profile.raw.replace('GBP','EUR')],['mixed-account',profile.raw.replace('00000000','00000001')]]){
+    const bad=info.outputPath(name+'.csv');await fs.writeFile(bad,raw);await page.locator('#dock-import').click();await page.locator('#import').setInputFiles(bad);await expect(page.locator('#csv-mapping')).toBeVisible();
+    await page.locator('#csv-account').selectOption({label:'Invented Bankline QA'});if(name==='foreign-account')await page.locator('#map-currency').selectOption('-1');
+    await page.locator('#preview-csv').click();await expect(page.locator('#import-error')).toBeVisible();await expect(page.locator('#import-preview')).toBeHidden();
+    await page.locator('#discard-import').click();await page.locator('#import-panel [data-close-dialog]').click();await expect(page.locator('#spending')).toContainText('£12.34');
+   }
+  }
+  const after=await save(page,info,'#save-html',profile.id+'-after-probes.html');expect(inert(await fs.readFile(after,'utf8'),'ledger-data')).toEqual(ledger);
+  expect(errors).toEqual([]);expect(external).toEqual([]);await context.close();
+ }
 });
