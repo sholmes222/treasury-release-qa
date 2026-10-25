@@ -5,7 +5,7 @@ const { pathToFileURL } = require('node:url');
 const crypto = require('node:crypto');
 
 const origin = 'https://the-treasury.samuelsmanuals.com';
-const blankHash = 'b1bcad277270add82cb755a91c52b2ff817a8aa33dee7a8ddfe1b956c89a0b8e';
+const blankHash = '8e90a5476287e6bb246a4b6d40e5ce357019f642797c81f8550121a2082b42aa';
 const fixture = path.resolve(__dirname, '../fixtures/payments.csv');
 const note = 'Fictional QA: keep a bicycle repair buffer.';
 const goal = 'Fictional QA buffer';
@@ -50,6 +50,7 @@ async function demoLandingChecks(page) {
   await expect(page.locator('#show-markers')).toHaveCount(0);
   await expect(page.locator('[data-notable]:checked')).toHaveCount(3);
   await expect(page.locator('.payment-marker')).toHaveCount(3);
+  expect(await page.evaluate(()=>{const hit=document.querySelector('#flow-chart .month-hit'),bottom=Number(hit.getAttribute('y'))+Number(hit.getAttribute('height'));return [...document.querySelectorAll('#flow-chart .payment-marker line')].every(e=>Number(e.getAttribute('y2'))===bottom);})).toBe(true);
   await expect(page.locator('#header-play')).toHaveAttribute('aria-pressed','true');
   const first=await page.locator('#header-slider').getAttribute('aria-valuetext');
   await expect.poll(()=>page.locator('#header-slider').getAttribute('aria-valuetext')).not.toBe(first);
@@ -195,10 +196,10 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
 
   const online = await browser.newContext();
   const publicPage = await online.newPage();
-  await publicPage.goto(origin + '/?qa=1.4.0');
-  await expect(publicPage.locator('#treasury-favicon')).toHaveAttribute('href', '/favicon.png?v=1.4.0');
+  await publicPage.goto(origin + '/?qa=1.4.1');
+  await expect(publicPage.locator('#treasury-favicon')).toHaveAttribute('href', '/favicon.png?v=1.4.1');
   for (const [name, mime, hash] of [['favicon.png','image/png','2e57cbc6f14c28ccf0dd0c60cb22fcd54ce16934c476528e9b8001f1cf5ba513'],['favicon.ico','image/vnd.microsoft.icon','3067b468e8430d44063885801d8f549f0dc6a84c88384bd9df86844bca0f2368']]) {
-    const icon = await fetch(origin + '/' + name + '?v=1.4.0', {headers:{'User-Agent':'Mozilla/5.0 (compatible; TreasuryReleaseQA/1.0)'}});
+    const icon = await fetch(origin + '/' + name + '?v=1.4.1', {headers:{'User-Agent':'Mozilla/5.0 (compatible; TreasuryReleaseQA/1.0)'}});
     expect(icon.status).toBe(200); expect(icon.headers.get('content-type')).toBe(mime);
     expect(crypto.createHash('sha256').update(Buffer.from(await icon.arrayBuffer())).digest('hex')).toBe(hash);
   }
@@ -232,7 +233,7 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
 
   await online.close();
   const reduced=await browser.newContext({reducedMotion:'reduce'}),reducedPage=await reduced.newPage();
-  await reducedPage.goto(origin+'/?qa=1.4.0');await reducedPage.locator('#guide-explore').click();
+  await reducedPage.goto(origin+'/?qa=1.4.1');await reducedPage.locator('#guide-explore').click();
   await expect(reducedPage.locator('#guidance-content')).toBeVisible();
   await expect(reducedPage.locator('#header-play')).toHaveAttribute('aria-pressed','false');
   await expect(reducedPage.locator('#header-play')).toHaveAttribute('title',/Reduced motion/);
@@ -432,4 +433,22 @@ test('documented Bankline files import and recover with precise currency and acc
   const after=await save(page,info,'#save-html',profile.id+'-after-probes.html');expect(inert(await fs.readFile(after,'utf8'),'ledger-data')).toEqual(ledger);
   expect(errors).toEqual([]);expect(external).toEqual([]);await context.close();
  }
+});
+
+
+test('reduced-motion explicit header controls advance and pause history', async ({browser}) => {
+  for(const entry of ['compact','expanded']){
+    const context=await browser.newContext({reducedMotion:'reduce'}),page=await context.newPage(),errors=[];
+    page.on('pageerror',error=>errors.push(error.message));
+    await page.goto(origin+'/?qa=1.4.1');await page.locator('#guide-explore').click();
+    if(entry==='expanded')await page.locator('#header-history-toggle').click();
+    const control=page.locator(entry==='compact'?'#header-play-shortcut':'#header-autoplay');
+    await expect(control).toBeEnabled();await expect(control).toHaveAttribute('aria-pressed','false');
+    await expect(control).toHaveAttribute('title',/Reduced motion/);
+    const before=await page.locator('#header-slider').getAttribute('aria-valuetext');
+    await control.click();await expect(page.locator('#header-play')).toHaveAttribute('aria-pressed','true');
+    await expect.poll(()=>page.locator('#header-slider').getAttribute('aria-valuetext')).not.toBe(before);
+    await control.click();await expect(page.locator('#header-play')).toHaveAttribute('aria-pressed','false');
+    expect(errors).toEqual([]);await context.close();
+  }
 });
