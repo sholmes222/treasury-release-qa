@@ -53,7 +53,11 @@ async function demoLandingChecks(page) {
   await expect(page.locator('#header-play')).toHaveAttribute('aria-pressed','true');
   const first=await page.locator('#header-slider').getAttribute('aria-valuetext');
   await expect.poll(()=>page.locator('#header-slider').getAttribute('aria-valuetext')).not.toBe(first);
-  await page.locator('[data-notable]:checked').first().uncheck();
+  const selectedId=await page.locator('[data-notable]:checked').first().getAttribute('data-notable');
+  expect(selectedId).toBeTruthy();
+  const selectedPayment=page.locator('[data-notable="'+selectedId+'"]');
+  await selectedPayment.uncheck();
+  await expect(selectedPayment).not.toBeChecked();
   await expect(page.locator('.payment-marker')).toHaveCount(2);
   await page.locator('#guidance .section-toggle').click();
   await page.locator('#header-play').click();
