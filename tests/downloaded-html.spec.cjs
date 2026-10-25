@@ -5,7 +5,7 @@ const { pathToFileURL } = require('node:url');
 const crypto = require('node:crypto');
 
 const origin = 'https://the-treasury.samuelsmanuals.com';
-const blankHash = '8e90a5476287e6bb246a4b6d40e5ce357019f642797c81f8550121a2082b42aa';
+const blankHash = '7983385aa538bfba8d7fbdbb2f8d6d853c72d859696f9a249f5e4bf8e5c24363';
 const fixture = path.resolve(__dirname, '../fixtures/payments.csv');
 const note = 'Fictional QA: keep a bicycle repair buffer.';
 const goal = 'Fictional QA buffer';
@@ -196,10 +196,10 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
 
   const online = await browser.newContext();
   const publicPage = await online.newPage();
-  await publicPage.goto(origin + '/?qa=1.4.1');
-  await expect(publicPage.locator('#treasury-favicon')).toHaveAttribute('href', '/favicon.png?v=1.4.1');
+  await publicPage.goto(origin + '/?qa=1.5.0');
+  await expect(publicPage.locator('#treasury-favicon')).toHaveAttribute('href', '/favicon.png?v=1.5.0');
   for (const [name, mime, hash] of [['favicon.png','image/png','2e57cbc6f14c28ccf0dd0c60cb22fcd54ce16934c476528e9b8001f1cf5ba513'],['favicon.ico','image/vnd.microsoft.icon','3067b468e8430d44063885801d8f549f0dc6a84c88384bd9df86844bca0f2368']]) {
-    const icon = await fetch(origin + '/' + name + '?v=1.4.1', {headers:{'User-Agent':'Mozilla/5.0 (compatible; TreasuryReleaseQA/1.0)'}});
+    const icon = await fetch(origin + '/' + name + '?v=1.5.0', {headers:{'User-Agent':'Mozilla/5.0 (compatible; TreasuryReleaseQA/1.0)'}});
     expect(icon.status).toBe(200); expect(icon.headers.get('content-type')).toBe(mime);
     expect(crypto.createHash('sha256').update(Buffer.from(await icon.arrayBuffer())).digest('hex')).toBe(hash);
   }
@@ -233,7 +233,7 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
 
   await online.close();
   const reduced=await browser.newContext({reducedMotion:'reduce'}),reducedPage=await reduced.newPage();
-  await reducedPage.goto(origin+'/?qa=1.4.1');await reducedPage.locator('#guide-explore').click();
+  await reducedPage.goto(origin+'/?qa=1.5.0');await reducedPage.locator('#guide-explore').click();
   await expect(reducedPage.locator('#guidance-content')).toBeVisible();
   await expect(reducedPage.locator('#header-play')).toHaveAttribute('aria-pressed','false');
   await expect(reducedPage.locator('#header-play')).toHaveAttribute('title',/Reduced motion/);
@@ -440,7 +440,7 @@ test('reduced-motion explicit header controls advance and pause history', async 
   for(const entry of ['compact','expanded']){
     const context=await browser.newContext({reducedMotion:'reduce'}),page=await context.newPage(),errors=[];
     page.on('pageerror',error=>errors.push(error.message));
-    await page.goto(origin+'/?qa=1.4.1');await page.locator('#guide-explore').click();
+    await page.goto(origin+'/?qa=1.5.0');await page.locator('#guide-explore').click();
     if(entry==='expanded'){await page.locator('#header-history-toggle').click();await expect(page.locator('#header-detail')).toBeVisible();}
     const control=page.locator('#header-play-shortcut');
     // The same visible slider Play control moves into the expanded graph.
@@ -458,4 +458,45 @@ test('reduced-motion explicit header controls advance and pause history', async 
     await expect(page.locator('#header-slider')).toHaveAttribute('aria-valuetext',paused);
     expect(errors).toEqual([]);await context.close();
   }
+});
+
+
+test('named-month and statement-product imports retain exact fictional facts across saved copies', async ({browser},info)=>{
+ const profiles=[
+  {id:'lloyds-native-layout',raw:"Transaction Date,Transaction Type,Sort Code,Account Number,Transaction Description,Debit Amount,Credit Amount,Balance\n01/06/2026,DEB,'00-00-00,00000000,Invented workshop,12.34,,0\n02/06/2026,FPI,'00-00-00,00000000,Invented funding,,100.01,0",expected:[-1234,10001],spending:'£12.34'},
+  {id:'natwest-named-month',raw:'Date,Type,Description,Value,Balance,Account Name,Account Number\n01 Jun 2026,POS,Invented supplies,-9.87,0,Invented account,000000-00000000\n02 Jun 2026,FPI,Invented funding,200.00,0,Invented account,000000-00000000',expected:[-987,20000],spending:'£9.87'},
+  {id:'revolut-product',raw:'Type,Product,Started Date,Completed Date,Description,Amount,Fee,Currency,State,Balance\nCard Payment,Current,2026-06-01 10:00:00,2026-06-02 10:00:00,Invented workshop,-12.34,0.06,GBP,COMPLETED,0\nTransfer,Current,2026-06-03 10:00:00,2026-06-03 10:00:00,Invented funding,100.00,0.00,GBP,COMPLETED,0\nCard Payment,Current,2026-06-04 10:00:00,,Invented pending,-3.00,0.00,GBP,PENDING,0\nTransfer,Savings,2026-06-05 10:00:00,2026-06-05 10:00:00,Invented savings,7.00,0.00,GBP,COMPLETED,0',expected:[-1240,10000],spending:'£12.40',product:true}
+ ];
+ const response=await fetch(origin+'/Treasury.html',{headers:{'User-Agent':'Mozilla/5.0 (compatible; TreasuryReleaseQA/1.0)'},redirect:'error',signal:AbortSignal.timeout(30000)});
+ expect(response.status).toBe(200);const bytes=Buffer.from(await response.arrayBuffer());expect(crypto.createHash('sha256').update(bytes).digest('hex')).toBe(blankHash);
+ const blank=info.outputPath('Statement-compat-Treasury.html');await fs.writeFile(blank,bytes);
+ for(const profile of profiles){
+  const csv=info.outputPath(profile.id+'.csv');await fs.writeFile(csv,profile.raw);
+  const context=await browser.newContext({offline:true,acceptDownloads:true}),page=await context.newPage(),errors=[],external=[];
+  page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{if(/^https?:/.test(r.url()))external.push(r.url());});
+  await page.goto(pathToFileURL(blank).href);await enter(page);
+  await page.locator('#dock-import').click();await page.locator('#import').setInputFiles(csv);await expect(page.locator('#csv-mapping')).toBeVisible();
+  await page.locator('#csv-account-name').fill('Invented '+profile.id);
+  if(profile.product){
+   await expect(page.locator('#csv-product')).toBeVisible();await page.locator('#preview-csv').click();await expect(page.locator('#import-error')).toContainText('Choose the Revolut product');
+   await page.locator('#csv-product').selectOption('Current');
+  }else await expect(page.locator('#csv-product-label')).toBeHidden();
+  await page.locator('#preview-csv').click();await expect(page.locator('#import-preview')).toBeVisible();
+  if(profile.product)await expect(page.locator('#csv-profile-note')).toContainText('2 completed rows for Current; 1 not completed and 1 other-product rows excluded. Fees deducted: £0.06');
+  await page.locator('#apply-import').click();await expect(page.locator('#import-panel')).toBeHidden();await expect(page.locator('#spending')).toContainText(profile.spending);
+  // An existing current account cannot silently receive another Revolut product.
+  if(profile.product){
+   await page.locator('#dock-import').click();await page.locator('#import').setInputFiles(csv);await page.locator('#csv-account').selectOption({label:'Invented '+profile.id});await page.locator('#csv-product').selectOption('Savings');await page.locator('#preview-csv').click();
+   await expect(page.locator('#apply-import')).toBeDisabled();await expect(page.locator('#merge-review-summary')).toContainText('another statement product');
+   await page.locator('#discard-import').click();await page.locator('#import-panel [data-close-dialog]').click();await expect(page.locator('#spending')).toContainText(profile.spending);
+  }
+  const saved=await save(page,info,'#save-html',profile.id+'-saved.html'),raw=await fs.readFile(saved,'utf8'),ledger=inert(raw,'ledger-data');
+  expect(ledger.transactions.map(t=>t.amount_minor)).toEqual(profile.expected);expect(ledger.import_sources[0].raw).toBe(profile.raw);
+  if(profile.product){expect(ledger.import_sources[0].options.profile).toBe('revolut-v1');expect(ledger.import_sources[0].options.product).toBe('Current');}
+  const freshContext=await browser.newContext({offline:true}),fresh=await freshContext.newPage();fresh.on('pageerror',e=>errors.push(e.message));await fresh.goto(pathToFileURL(saved).href);await enter(fresh);await expect(fresh.locator('#spending')).toContainText(profile.spending);await freshContext.close();
+  if(profile.product){
+   const backup=await save(page,info,'#save-json',profile.id+'-saved.json'),restoreContext=await browser.newContext({offline:true}),restore=await restoreContext.newPage();restore.on('pageerror',e=>errors.push(e.message));await restore.goto(pathToFileURL(blank).href);await enter(restore);await restore.locator('#dock-import').click();await restore.locator('#import').setInputFiles(backup);await expect(restore.locator('#import-preview')).toBeVisible();await restore.locator('#apply-import').click();await expect(restore.locator('#spending')).toContainText(profile.spending);await restoreContext.close();
+  }
+  expect(errors).toEqual([]);expect(external).toEqual([]);await context.close();
+ }
 });
