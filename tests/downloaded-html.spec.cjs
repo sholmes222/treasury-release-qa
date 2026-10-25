@@ -5,7 +5,7 @@ const { pathToFileURL } = require('node:url');
 const crypto = require('node:crypto');
 
 const origin = 'https://the-treasury.samuelsmanuals.com';
-const blankHash = 'f40e272eb1b4c47c0b4db4dd3d5783e7ad6b9fb828ae76ff8ed656c0968b5935';
+const blankHash = '385562b4f2f1fe1ee9cc0477597d86b142c86e340507e5dc31533c9032a31a69';
 const fixture = path.resolve(__dirname, '../fixtures/payments.csv');
 const note = 'Fictional QA: keep a bicycle repair buffer.';
 const goal = 'Fictional QA buffer';
@@ -120,6 +120,7 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
     await expect(page.locator('#tour-dimmer')).toBeVisible();
     await page.locator('#tour-try').click();
     await expect(page.locator('#tour-try')).toHaveText('Show guide');
+    if (step === 3) await expect(page.locator('#tour-try')).not.toBeFocused();
     if (step === 6) {
       await page.locator('#data-open').click();
       await expect(page.locator('#data-panel')).toBeVisible();
