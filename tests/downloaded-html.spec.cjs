@@ -5,7 +5,7 @@ const { pathToFileURL } = require('node:url');
 const crypto = require('node:crypto');
 
 const origin = 'https://the-treasury.samuelsmanuals.com';
-const blankHash = '0ab396431b7f9cf474d874993c7cb231b42be3821863b3b27594cab3126a45ec';
+const blankHash = '79295b6b46c3f9582bd48e16c8a2a1a8e768aed2a9cd554c0c0e98b8e688633f';
 const fixture = path.resolve(__dirname, '../fixtures/payments.csv');
 const note = 'Fictional QA: keep a bicycle repair buffer.';
 const goal = 'Fictional QA buffer';
@@ -57,6 +57,18 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   expect(empty.transactions).toEqual([]);
   expect(empty.fictional).toBe(false);
 
+  const online = await browser.newContext();
+  const publicPage = await online.newPage();
+  await publicPage.goto(origin + '/?qa=1.1.2');
+  await expect(publicPage.locator('#treasury-favicon')).toHaveAttribute('href', '/favicon.png?v=1.1.2');
+  for (const [name, mime, hash] of [['favicon.png','image/png','2e57cbc6f14c28ccf0dd0c60cb22fcd54ce16934c476528e9b8001f1cf5ba513'],['favicon.ico','image/vnd.microsoft.icon','3067b468e8430d44063885801d8f549f0dc6a84c88384bd9df86844bca0f2368']]) {
+    const icon = await fetch(origin + '/' + name + '?v=1.1.2', {headers:{'User-Agent':'Mozilla/5.0 (compatible; TreasuryReleaseQA/1.0)'}});
+    expect(icon.status).toBe(200); expect(icon.headers.get('content-type')).toBe(mime);
+    expect(crypto.createHash('sha256').update(Buffer.from(await icon.arrayBuffer())).digest('hex')).toBe(hash);
+  }
+  expect(await publicPage.evaluate(async () => {const img=new Image();img.src=document.querySelector('#treasury-favicon').href;await img.decode();return img.naturalWidth===64&&img.naturalHeight===64;})).toBe(true);
+  await online.close();
+
   const context = await browser.newContext({ acceptDownloads: true, offline: true });
   const page = await context.newPage();
   const errors = [], external = [];
@@ -65,9 +77,8 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   await page.goto(pathToFileURL(blank).href);
   expect(new URL(page.url()).protocol).toBe('file:');
   await enter(page);
-  await expect(page.locator('footer').getByRole('button', { name: 'Release notes', exact: true })).toBeAttached();
-  await expect(page.locator('#release-notes')).toContainText('Release 1.1.1');
-  await expect(page.locator('#release-notes')).toContainText('Windows, macOS Safari and mobile operating systems have not been tested.');
+  await expect(page.locator('footer').getByRole('button', { name: 'Getting started', exact: true })).toBeAttached();
+  await expect(page.locator('#release-notes,#help-updates,.help-version')).toHaveCount(0);
   expect(bytes.toString()).not.toContain('Beta testing:');
   await expect(page.locator('#header-inline-controls label > span')).toHaveText(['Track:', 'As a % of:']);
   await expect(page.locator('#treasury-favicon')).toHaveAttribute('type', 'image/png');
@@ -110,8 +121,9 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   const beforeTourFile = await save(page, info, '#save-html', 'Before-tour.html');
   const beforeTour = await fs.readFile(beforeTourFile, 'utf8');
   await page.locator('#help').click();
-  await expect(page.locator('#help-updates')).not.toHaveAttribute('open');
-  await expect(page.locator('#release-notes')).not.toBeVisible();
+  await expect(page.locator('#help-panel')).toContainText('Set up your Treasury');
+  await expect(page.locator('#help-panel')).toContainText('The app does not encrypt them');
+  await expect(page.locator('#help-setup')).toBeVisible();
   await page.locator('#help-tour').click();
   for (let step = 1; step <= 6; step++) {
     await expect(page.locator('#tour-count')).toHaveText('Walkthrough · ' + step + ' of 6');
