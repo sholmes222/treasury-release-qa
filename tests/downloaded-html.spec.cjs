@@ -441,14 +441,21 @@ test('reduced-motion explicit header controls advance and pause history', async 
     const context=await browser.newContext({reducedMotion:'reduce'}),page=await context.newPage(),errors=[];
     page.on('pageerror',error=>errors.push(error.message));
     await page.goto(origin+'/?qa=1.4.1');await page.locator('#guide-explore').click();
-    if(entry==='expanded')await page.locator('#header-history-toggle').click();
-    const control=page.locator(entry==='compact'?'#header-play-shortcut':'#header-autoplay');
+    if(entry==='expanded'){await page.locator('#header-history-toggle').click();await expect(page.locator('#header-detail')).toBeVisible();}
+    const control=page.locator('#header-play-shortcut');
+    // The same visible slider Play control moves into the expanded graph.
+    if(entry==='expanded')await expect(page.locator('#header-detail #header-play-shortcut')).toBeVisible();
     await expect(control).toBeEnabled();await expect(control).toHaveAttribute('aria-pressed','false');
     await expect(control).toHaveAttribute('title',/Reduced motion/);
     const before=await page.locator('#header-slider').getAttribute('aria-valuetext');
     await control.click();await expect(page.locator('#header-play')).toHaveAttribute('aria-pressed','true');
     await expect.poll(()=>page.locator('#header-slider').getAttribute('aria-valuetext')).not.toBe(before);
+    const started=await page.locator('#header-slider').getAttribute('aria-valuetext');
+    await expect.poll(()=>page.locator('#header-slider').getAttribute('aria-valuetext')).not.toBe(started);
     await control.click();await expect(page.locator('#header-play')).toHaveAttribute('aria-pressed','false');
+    const paused=await page.locator('#header-slider').getAttribute('aria-valuetext');
+    await page.waitForTimeout(1800);
+    await expect(page.locator('#header-slider')).toHaveAttribute('aria-valuetext',paused);
     expect(errors).toEqual([]);await context.close();
   }
 });
