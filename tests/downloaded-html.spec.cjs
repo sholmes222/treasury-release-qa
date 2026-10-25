@@ -5,7 +5,7 @@ const { pathToFileURL } = require('node:url');
 const crypto = require('node:crypto');
 
 const origin = 'https://the-treasury.samuelsmanuals.com';
-const blankHash = 'e13b713ae5ed66c6e2899e709fc5cb3d6224c56ba9cc316664de8df9039fbc32';
+const blankHash = '44512708e9903f4dacb4fc2f56b8edb57f936e716797e8e1f0ce174920b1f3dd';
 const fixture = path.resolve(__dirname, '../fixtures/payments.csv');
 const note = 'Fictional QA: keep a bicycle repair buffer.';
 const goal = 'Fictional QA buffer';
@@ -66,10 +66,17 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   expect(new URL(page.url()).protocol).toBe('file:');
   await enter(page);
   await expect(page.locator('footer').getByRole('button', { name: 'Release notes', exact: true })).toBeAttached();
-  await expect(page.locator('#release-notes')).toContainText('Release 1.0.1');
+  await expect(page.locator('#release-notes')).toContainText('Release 1.1.0');
   await expect(page.locator('#release-notes')).toContainText('Windows, macOS Safari and mobile operating systems have not been tested.');
   expect(bytes.toString()).not.toContain('Beta testing:');
   await expect(page.locator('#header-inline-controls label > span')).toHaveText(['Track:', 'As a % of:']);
+  await expect(page.locator('#treasury-favicon')).toHaveAttribute('type', 'image/png');
+  expect(await page.evaluate(async () => {
+    const link = document.querySelector('#treasury-favicon');
+    const image = new Image(); image.src = link.href; await image.decode();
+    return image.naturalWidth > 0 && image.naturalHeight > 0 && link.href.startsWith('data:image/png;base64,');
+  })).toBe(true);
+
   await importCSV(page);
   for (const [section, total] of [['cash', 'kpis'], ['spending', 'spend-note'], ['baseline', 'baseline-kpis'], ['charity', 'giving-total'], ['investments', 'savings-kpis'], ['home', 'mortgage-kpis'], ['income', 'income-kpis']]) {
     await expect(page.locator('#' + section + ' > .section-head #' + total)).toHaveCount(1);
@@ -99,9 +106,33 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
 
   // Reimport into the same account must preserve the manual edit and avoid duplicates.
   await importCSV(page, true);
+  // The interactive help must work on an offline local copy without changing records.
+  const beforeTourFile = await save(page, info, '#save-html', 'Before-tour.html');
+  const beforeTour = await fs.readFile(beforeTourFile, 'utf8');
+  await page.locator('#help').click();
+  await expect(page.locator('#help-updates')).not.toHaveAttribute('open');
+  await expect(page.locator('#release-notes')).not.toBeVisible();
+  await page.locator('#help-tour').click();
+  for (let step = 1; step <= 6; step++) {
+    await expect(page.locator('#tour-count')).toHaveText('Walkthrough · ' + step + ' of 6');
+    await expect(page.locator('.tour-target')).toHaveCount(1);
+    await page.locator('#tour-try').click();
+    await expect(page.locator('#tour-try')).toHaveText('Show guide');
+    if (step === 6) {
+      await page.locator('#data-open').click();
+      await expect(page.locator('#data-panel')).toBeVisible();
+      await expect(page.locator('#app-tour')).not.toBeVisible();
+      await page.getByRole('button', { name: 'Close data', exact: true }).click();
+      await expect(page.locator('#app-tour')).toBeVisible();
+    }
+    await page.locator('#tour-next').click();
+  }
+  await expect(page.locator('#app-tour')).not.toBeVisible();
   const saved = await save(page, info, '#save-html', 'My-Treasury.html');
   const raw = await fs.readFile(saved, 'utf8');
   const ledger = inert(raw, 'ledger-data'), view = inert(raw, 'view-state');
+  expect(ledger).toEqual(inert(beforeTour, 'ledger-data'));
+  for (const key of ['goals', 'drafts', 'folded']) expect(view[key]).toEqual(inert(beforeTour, 'view-state')[key]);
   expect(ledger.transactions).toHaveLength(4);
   expect(ledger.transactions.reduce((sum, row) => sum + row.amount_minor, 0)).toBe(154001);
   expect(ledger.transactions.find(row => row.merchant === 'Fictional QA coffee').amount_minor).toBe(-1234);
