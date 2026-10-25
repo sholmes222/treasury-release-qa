@@ -5,7 +5,7 @@ const { pathToFileURL } = require('node:url');
 const crypto = require('node:crypto');
 
 const origin = 'https://the-treasury.samuelsmanuals.com';
-const blankHash = '44512708e9903f4dacb4fc2f56b8edb57f936e716797e8e1f0ce174920b1f3dd';
+const blankHash = 'f40e272eb1b4c47c0b4db4dd3d5783e7ad6b9fb828ae76ff8ed656c0968b5935';
 const fixture = path.resolve(__dirname, '../fixtures/payments.csv');
 const note = 'Fictional QA: keep a bicycle repair buffer.';
 const goal = 'Fictional QA buffer';
@@ -66,7 +66,7 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   expect(new URL(page.url()).protocol).toBe('file:');
   await enter(page);
   await expect(page.locator('footer').getByRole('button', { name: 'Release notes', exact: true })).toBeAttached();
-  await expect(page.locator('#release-notes')).toContainText('Release 1.1.0');
+  await expect(page.locator('#release-notes')).toContainText('Release 1.1.1');
   await expect(page.locator('#release-notes')).toContainText('Windows, macOS Safari and mobile operating systems have not been tested.');
   expect(bytes.toString()).not.toContain('Beta testing:');
   await expect(page.locator('#header-inline-controls label > span')).toHaveText(['Track:', 'As a % of:']);
@@ -116,6 +116,8 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   for (let step = 1; step <= 6; step++) {
     await expect(page.locator('#tour-count')).toHaveText('Walkthrough · ' + step + ' of 6');
     await expect(page.locator('.tour-target')).toHaveCount(1);
+    await expect(page.locator('.tour-active-surface')).toHaveCount(1);
+    await expect(page.locator('#tour-dimmer')).toBeVisible();
     await page.locator('#tour-try').click();
     await expect(page.locator('#tour-try')).toHaveText('Show guide');
     if (step === 6) {
@@ -128,6 +130,13 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
     await page.locator('#tour-next').click();
   }
   await expect(page.locator('#app-tour')).not.toBeVisible();
+  await expect(page.locator('#tour-dimmer')).not.toBeVisible();
+  await expect(page.locator('.tour-active-surface')).toHaveCount(0);
+  await expect(page.locator('#help-panel')).toBeVisible();
+  await expect(page.locator('#help-entry')).toBeFocused();
+  await expect(page.locator('#help-entry')).toHaveText('Open import');
+  await expect(page.locator('#help-setup')).toContainText('Your local copy is ready');
+  await page.getByRole('button', { name: 'Close help', exact: true }).click();
   const saved = await save(page, info, '#save-html', 'My-Treasury.html');
   const raw = await fs.readFile(saved, 'utf8');
   const ledger = inert(raw, 'ledger-data'), view = inert(raw, 'view-state');
