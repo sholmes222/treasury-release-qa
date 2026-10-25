@@ -5,7 +5,7 @@ const { pathToFileURL } = require('node:url');
 const crypto = require('node:crypto');
 
 const origin = 'https://the-treasury.samuelsmanuals.com';
-const blankHash = 'e418d07a2531363f7559fbc6007e098e91fd854a22daf2fb2fabeecb3e07b86a';
+const blankHash = 'b1bcad277270add82cb755a91c52b2ff817a8aa33dee7a8ddfe1b956c89a0b8e';
 const fixture = path.resolve(__dirname, '../fixtures/payments.csv');
 const note = 'Fictional QA: keep a bicycle repair buffer.';
 const goal = 'Fictional QA buffer';
@@ -43,6 +43,43 @@ async function importCSV(page, existing = false) {
 }
 
 
+async function demoLandingChecks(page) {
+  await expect(page.locator('#guidance .section-toggle')).toHaveAttribute('aria-expanded','true');
+  await expect(page.locator('#guidance-content')).toBeVisible();
+  expect(await page.locator('#savings-kpis .kpi small').evaluateAll(nodes=>nodes.length===2&&nodes.every(e=>!e.classList.contains('sr-only')&&e.textContent.includes('2026-06-30')))).toBe(true);
+  await expect(page.locator('#show-markers')).toHaveCount(0);
+  await expect(page.locator('[data-notable]:checked')).toHaveCount(3);
+  await expect(page.locator('.payment-marker')).toHaveCount(3);
+  await expect(page.locator('#header-play')).toHaveAttribute('aria-pressed','true');
+  const first=await page.locator('#header-slider').getAttribute('aria-valuetext');
+  await expect.poll(()=>page.locator('#header-slider').getAttribute('aria-valuetext')).not.toBe(first);
+  await page.locator('[data-notable]:checked').first().uncheck();
+  await expect(page.locator('.payment-marker')).toHaveCount(2);
+  await page.locator('#guidance .section-toggle').click();
+  await page.locator('#header-play').click();
+  await expect(page.locator('#header-play')).toHaveAttribute('aria-pressed','false');
+  await page.reload();await page.locator('#guide-explore').click();
+  await expect(page.locator('#guidance .section-toggle')).toHaveAttribute('aria-expanded','true');
+  await expect(page.locator('[data-notable]:checked')).toHaveCount(3);
+  await expect(page.locator('#header-play')).toHaveAttribute('aria-pressed','true');
+}
+
+async function signedStackChecks(page) {
+  const result=await page.evaluate(()=>{
+    const canvas=document.createElement('canvas');canvas.width=canvas.height=1;const ctx=canvas.getContext('2d'),rgb=color=>{ctx.clearRect(0,0,1,1);ctx.fillStyle=color;ctx.fillRect(0,0,1,1);return [...ctx.getImageData(0,0,1,1).data].slice(0,3);};
+    const zero=Number(document.querySelector('#flow-chart svg line[stroke-width="1.2"]').getAttribute('y1'));
+    const rows=[...document.querySelectorAll('#flow-chart [data-flow-side]')].map(e=>({side:e.dataset.flowSide,part:e.dataset.flowPart,color:rgb(getComputedStyle(e).fill),y:Number(e.getAttribute('y')),height:Number(e.getAttribute('height'))}));
+    return {zero,rows};
+  });
+  const incoming=result.rows.filter(r=>r.side==='incoming'),outgoing=result.rows.filter(r=>r.side==='outgoing');
+  expect(incoming.length).toBeGreaterThan(0);expect(outgoing.length).toBeGreaterThan(0);
+  expect(incoming.every(r=>r.color[1]>r.color[0]&&r.color[1]>r.color[2]&&r.y+r.height<=result.zero+.01)).toBe(true);
+  expect(outgoing.every(r=>r.color[0]>r.color[1]&&r.color[0]>r.color[2]&&r.y>=result.zero-.01)).toBe(true);
+  expect(new Set(outgoing.map(r=>r.color.join(','))).size).toBeGreaterThanOrEqual(4);
+  expect(new Set(incoming.map(r=>r.color.join(','))).size).toBeGreaterThanOrEqual(3);
+  await expect(page.locator('#flow-legend')).toContainText('Money in');await expect(page.locator('#flow-legend')).toContainText('Money out');
+}
+
 async function appearanceChecks(page, draft = false) {
   await page.locator('#appearance-open').click();
   await expect(page.locator('#appearance-panel')).toBeVisible();
@@ -57,6 +94,7 @@ async function appearanceChecks(page, draft = false) {
       await expect(page.locator('body')).toHaveAttribute('data-skin', skin);
       await expect(page.locator('#appearance-panel')).toBeVisible();
       expect(await page.evaluate(() => getComputedStyle(document.querySelector('#help')).color === getComputedStyle(document.querySelector('#guidance h2')).color)).toBe(true);
+      if (!draft) await signedStackChecks(page);
       if (draft) await expect(page.locator('#guidance-text')).toHaveValue('Fictional QA unfinished appearance draft.');
     }
   }
@@ -153,10 +191,10 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
 
   const online = await browser.newContext();
   const publicPage = await online.newPage();
-  await publicPage.goto(origin + '/?qa=1.3.0');
-  await expect(publicPage.locator('#treasury-favicon')).toHaveAttribute('href', '/favicon.png?v=1.3.0');
+  await publicPage.goto(origin + '/?qa=1.4.0');
+  await expect(publicPage.locator('#treasury-favicon')).toHaveAttribute('href', '/favicon.png?v=1.4.0');
   for (const [name, mime, hash] of [['favicon.png','image/png','2e57cbc6f14c28ccf0dd0c60cb22fcd54ce16934c476528e9b8001f1cf5ba513'],['favicon.ico','image/vnd.microsoft.icon','3067b468e8430d44063885801d8f549f0dc6a84c88384bd9df86844bca0f2368']]) {
-    const icon = await fetch(origin + '/' + name + '?v=1.3.0', {headers:{'User-Agent':'Mozilla/5.0 (compatible; TreasuryReleaseQA/1.0)'}});
+    const icon = await fetch(origin + '/' + name + '?v=1.4.0', {headers:{'User-Agent':'Mozilla/5.0 (compatible; TreasuryReleaseQA/1.0)'}});
     expect(icon.status).toBe(200); expect(icon.headers.get('content-type')).toBe(mime);
     expect(crypto.createHash('sha256').update(Buffer.from(await icon.arrayBuffer())).digest('hex')).toBe(hash);
   }
@@ -169,6 +207,7 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   await blankDownloadCheck(publicPage, publicPage.locator('#guide-download'), publicPage.locator('#guide .download-help'), info, 'welcome', bytes.toString());
   await expect(publicPage.locator('#guide')).toBeVisible();
   await publicPage.locator('#guide-explore').click();
+  await demoLandingChecks(publicPage);
   await appearanceChecks(publicPage);
   await blankDownloadCheck(publicPage, publicPage.locator('#dock-import'), null, info, 'dock', bytes.toString());
   await blankDownloadCheck(publicPage, publicPage.locator('#mode .download-link'), publicPage.locator('#mode .download-help'), info, 'notice', bytes.toString());
@@ -188,6 +227,14 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   await publicPage.locator('#appearance-close').click();
 
   await online.close();
+  const reduced=await browser.newContext({reducedMotion:'reduce'}),reducedPage=await reduced.newPage();
+  await reducedPage.goto(origin+'/?qa=1.4.0');await reducedPage.locator('#guide-explore').click();
+  await expect(reducedPage.locator('#guidance-content')).toBeVisible();
+  await expect(reducedPage.locator('#header-play')).toHaveAttribute('aria-pressed','false');
+  await expect(reducedPage.locator('#header-play')).toHaveAttribute('title',/Reduced motion/);
+  await reducedPage.locator('#header-play').click();
+  await expect(reducedPage.locator('#header-play')).toHaveAttribute('aria-pressed','true');
+  await reduced.close();
 
   const context = await browser.newContext({ acceptDownloads: true, offline: true });
   const page = await context.newPage();
@@ -218,7 +265,7 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   await page.locator('#data-panel [data-close-dialog]').click();
   await expect(page.locator('#include-current')).toBeVisible();
   await expect(page.locator('.cash-display-options summary')).toHaveCount(0);
-  await page.locator('#show-markers').check();
+  await page.locator('#show-paydays').check();
   await page.getByRole('button', {name:'Add strategic note',exact:true}).click();
   await page.locator('#guidance-text').fill('Fictional QA unfinished appearance draft.');
   await appearanceChecks(page, true);
@@ -226,7 +273,7 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   await page.locator('#monochrome-colors').check();
   await expect(page.locator('body')).toHaveAttribute('data-colors','gold_white');
   await page.locator('#appearance-close').click();
-  await expect(page.locator('#show-markers')).toBeChecked();
+  await expect(page.locator('#show-paydays')).toBeChecked();
   await page.locator('#guidance-cancel').click();
 
   await importCSV(page);
