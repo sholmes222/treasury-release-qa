@@ -5,7 +5,7 @@ const { pathToFileURL } = require('node:url');
 const crypto = require('node:crypto');
 
 const origin = 'https://the-treasury.samuelsmanuals.com';
-const blankHash = 'f2d61e57cbb2c617b5144259b6786a6b5918553ed16c463aead65a4bc2351e70';
+const blankHash = 'e13b713ae5ed66c6e2899e709fc5cb3d6224c56ba9cc316664de8df9039fbc32';
 const fixture = path.resolve(__dirname, '../fixtures/payments.csv');
 const note = 'Fictional QA: keep a bicycle repair buffer.';
 const goal = 'Fictional QA buffer';
@@ -66,10 +66,16 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   expect(new URL(page.url()).protocol).toBe('file:');
   await enter(page);
   await expect(page.locator('footer').getByRole('button', { name: 'Release notes', exact: true })).toBeAttached();
-  await expect(page.locator('#release-notes')).toContainText('Release 1.0.0');
+  await expect(page.locator('#release-notes')).toContainText('Release 1.0.1');
   await expect(page.locator('#release-notes')).toContainText('Windows, macOS Safari and mobile operating systems have not been tested.');
   expect(bytes.toString()).not.toContain('Beta testing:');
+  await expect(page.locator('#header-inline-controls label > span')).toHaveText(['Track:', 'As a % of:']);
   await importCSV(page);
+  for (const [section, total] of [['cash', 'kpis'], ['spending', 'spend-note'], ['baseline', 'baseline-kpis'], ['charity', 'giving-total'], ['investments', 'savings-kpis'], ['home', 'mortgage-kpis'], ['income', 'income-kpis']]) {
+    await expect(page.locator('#' + section + ' > .section-head #' + total)).toHaveCount(1);
+  }
+  await expect(page.locator('#cash > .section-head #kpis')).toContainText('£947.65');
+  await expect(page.locator('#spending > .section-head #spend-note strong')).toHaveText('£947.65');
   await expect(page.locator('#spending')).toContainText('£947.65');
 
   await page.getByRole('button', { name: 'Add payment', exact: true }).click();
