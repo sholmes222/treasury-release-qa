@@ -5,7 +5,7 @@ const { pathToFileURL } = require('node:url');
 const crypto = require('node:crypto');
 
 const origin = 'https://the-treasury.samuelsmanuals.com';
-const blankHash = '7983385aa538bfba8d7fbdbb2f8d6d853c72d859696f9a249f5e4bf8e5c24363';
+const blankHash = '553a4f8b77cfc37466d9c1ac88f040f4177a5285850d2815fe810fb89b4f3b4e';
 const fixture = path.resolve(__dirname, '../fixtures/payments.csv');
 const note = 'Fictional QA: keep a bicycle repair buffer.';
 const goal = 'Fictional QA buffer';
@@ -46,6 +46,19 @@ async function importCSV(page, existing = false) {
 async function demoLandingChecks(page) {
   await expect(page.locator('#guidance .section-toggle')).toHaveAttribute('aria-expanded','true');
   await expect(page.locator('#guidance-content')).toBeVisible();
+  await expect(page.locator('#flow-chart [data-month]')).toHaveCount(36);
+  expect(await page.locator('[data-notable]').count()).toBeGreaterThanOrEqual(27);
+  await expect(page.locator('#guidance > .section-head [aria-label="Guidance help"]')).toHaveCount(1);
+  const plan=page.locator('#baseline > .section-head [data-manual-launch^="baseline:"]');
+  await expect(plan).toHaveText('Add plan');
+  const planBox=await plan.boundingBox(),titleBox=await page.locator('#baseline h2').boundingBox();
+  expect(Math.abs(planBox.y-titleBox.y)).toBeLessThan(12);
+  await expect(page.locator('#values-status')).toHaveText('');
+  await expect(page.locator('#investments > .section-head [data-goal-add]')).toHaveCount(1);
+  const help=page.getByRole('button',{name:'Savings and investments help',exact:true});
+  await help.focus();await expect(page.locator('#chart-tooltip')).toBeVisible();
+  await expect(page.locator('#chart-tooltip')).toContainText('Recorded account balances');
+  await help.press('Escape');await expect(page.locator('#chart-tooltip')).not.toBeVisible();
   expect(await page.locator('#savings-kpis .kpi small').evaluateAll(nodes=>nodes.length===2&&nodes.every(e=>!e.classList.contains('sr-only')&&e.textContent.includes('2026-06-30')))).toBe(true);
   await expect(page.locator('#show-markers')).toHaveCount(0);
   await expect(page.locator('[data-notable]:checked')).toHaveCount(3);
