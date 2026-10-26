@@ -7,6 +7,6 @@ module.exports = defineConfig({
   workers: 1,
   retries: 0,
   reporter: [['list'], ['json', { outputFile: 'test-results/results.json' }]],
-  use: { acceptDownloads: true, trace: 'retain-on-failure', screenshot: 'only-on-failure' },
+  use: { acceptDownloads: true, trace: 'off', screenshot: 'only-on-failure' },
   projects: ['chromium', 'firefox', 'webkit'].map(browserName => ({ name: browserName, use: { browserName } }))
 });
