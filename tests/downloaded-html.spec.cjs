@@ -200,6 +200,46 @@ async function blankDownloadCheck(page, button, help, info, name, reference) {
   expect(spending.scope).toBe('treasury-spending-view');
 }
 
+async function banklineChecks(browser,info){
+ const profiles=require('../fixtures/bank-layouts.json').profiles.filter(p=>['rbs-bankline-statement-signed','rbs-bankline-transaction-search'].includes(p.id));
+ const response=await fetch(origin+'/Treasury.html',{headers:{'User-Agent':'Mozilla/5.0 (compatible; TreasuryReleaseQA/1.0)'},redirect:'error',signal:AbortSignal.timeout(30000)});
+ expect(response.status).toBe(200);const bytes=Buffer.from(await response.arrayBuffer());expect(crypto.createHash('sha256').update(bytes).digest('hex')).toBe(blankHash);
+ const blank=info.outputPath('Bank-import-Treasury.html');await fs.writeFile(blank,bytes);
+ for(const profile of profiles){
+  const csv=info.outputPath(profile.id+'.csv');await fs.writeFile(csv,profile.raw);
+  const context=await browser.newContext({acceptDownloads:true,offline:true}),page=await context.newPage(),errors=[],external=[];
+  page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>{if(/^https?:/.test(request.url()))external.push(request.url());});
+  await page.goto(pathToFileURL(blank).href);await enter(page);
+  async function importProfile(existing=false){await page.locator('#dock-import').click();await page.locator('#import').setInputFiles(csv);await expect(page.locator('#csv-mapping')).toBeVisible();
+   if(existing)await page.locator('#csv-account').selectOption({label:'Invented Bankline QA'});else await page.locator('#csv-account-name').fill('Invented Bankline QA');
+   await page.locator('#preview-csv').click();await expect(page.locator('#import-preview')).toBeVisible();await page.locator('#apply-import').click();await expect(page.locator('#import-panel')).toBeHidden();}
+  await importProfile();await expect(page.locator('#spending')).toContainText('£12.34');await importProfile(true);
+  const saved=await save(page,info,'#save-html',profile.id+'-saved.html'),raw=await fs.readFile(saved,'utf8'),ledger=inert(raw,'ledger-data');
+  expect(ledger.transactions.map(t=>t.amount_minor)).toEqual(profile.expected_minor);expect(ledger.import_sources).toHaveLength(1);expect(ledger.import_sources[0].raw).toBe(profile.raw);expect(ledger.transaction_coverage.basis).toBe('observed');
+  const reopened=await browser.newContext({offline:true}),fresh=await reopened.newPage();await fresh.goto(pathToFileURL(saved).href);await enter(fresh);await expect(fresh.locator('#spending')).toContainText('£12.34');await reopened.close();
+  // Clearing the optional currency mapping cannot hide an explicit foreign account currency.
+  if(profile.id==='rbs-bankline-statement-signed'){
+   for(const [name,raw] of [['foreign-account',profile.raw.replace('GBP','EUR')],['mixed-account',profile.raw.replace('00000000','00000001')]]){
+    const bad=info.outputPath(name+'.csv');await fs.writeFile(bad,raw);await page.locator('#dock-import').click();await page.locator('#import').setInputFiles(bad);await expect(page.locator('#csv-mapping')).toBeVisible();
+    await page.locator('#csv-account').selectOption({label:'Invented Bankline QA'});if(name==='foreign-account')await page.locator('#map-currency').selectOption('-1');
+    await page.locator('#preview-csv').click();await expect(page.locator('#import-error')).toBeVisible();await expect(page.locator('#import-preview')).toBeHidden();
+    await page.locator('#discard-import').click();await page.locator('#import-panel [data-close-dialog]').click();await expect(page.locator('#spending')).toContainText('£12.34');
+   }
+  }
+  const after=await save(page,info,'#save-html',profile.id+'-after-probes.html');expect(inert(await fs.readFile(after,'utf8'),'ledger-data')).toEqual(ledger);
+  expect(errors).toEqual([]);expect(external).toEqual([]);await context.close();
+ }
+}
+
+test('public appearance preserves semantic and gold-white display across themes', async ({browser},info)=>{
+ // Run the full appearance matrix in a fresh browser before local-file contexts.
+ const appearanceStarted=Date.now(),appearanceContext=await browser.newContext(),appearancePage=await appearanceContext.newPage(),appearanceErrors=[];
+ appearancePage.on('pageerror',error=>appearanceErrors.push(error.message));
+ await appearancePage.goto(origin+'/?qa=1.5.0',{waitUntil:'domcontentloaded'});await enter(appearancePage);
+ await appearanceChecks(appearancePage);expect(appearanceErrors).toEqual([]);await appearanceContext.close();
+ console.log(JSON.stringify({browser:info.project.name,phase:'appearance-matrix-complete',elapsedMs:Date.now()-appearanceStarted}));
+});
+
 test('downloaded file imports, edits, saves, reopens and restores without network', async ({ browser }, info) => {
   const started=Date.now(),phase=label=>console.log(JSON.stringify({browser:info.project.name,phase:label,elapsedMs:Date.now()-started}));phase('start');
   // This executes only on the independent CI VM. Never on a desktop profile.
@@ -417,44 +457,6 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
 });
 
 
-test('public appearance and documented Bankline imports preserve display and account boundaries', async ({browser},info)=>{
- // The six-theme matrix has its own context and shares this short case's existing budget.
- const appearanceStarted=Date.now(),appearanceContext=await browser.newContext(),appearancePage=await appearanceContext.newPage(),appearanceErrors=[];
- appearancePage.on('pageerror',error=>appearanceErrors.push(error.message));
- await appearancePage.goto(origin+'/?qa=1.5.0',{waitUntil:'domcontentloaded'});await enter(appearancePage);
- await appearanceChecks(appearancePage);expect(appearanceErrors).toEqual([]);await appearanceContext.close();
- console.log(JSON.stringify({browser:info.project.name,phase:'appearance-matrix-complete',elapsedMs:Date.now()-appearanceStarted}));
- const profiles=require('../fixtures/bank-layouts.json').profiles.filter(p=>['rbs-bankline-statement-signed','rbs-bankline-transaction-search'].includes(p.id));
- const response=await fetch(origin+'/Treasury.html',{headers:{'User-Agent':'Mozilla/5.0 (compatible; TreasuryReleaseQA/1.0)'},redirect:'error',signal:AbortSignal.timeout(30000)});
- expect(response.status).toBe(200);const bytes=Buffer.from(await response.arrayBuffer());expect(crypto.createHash('sha256').update(bytes).digest('hex')).toBe(blankHash);
- const blank=info.outputPath('Bank-import-Treasury.html');await fs.writeFile(blank,bytes);
- for(const profile of profiles){
-  const csv=info.outputPath(profile.id+'.csv');await fs.writeFile(csv,profile.raw);
-  const context=await browser.newContext({acceptDownloads:true,offline:true}),page=await context.newPage(),errors=[],external=[];
-  page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>{if(/^https?:/.test(request.url()))external.push(request.url());});
-  await page.goto(pathToFileURL(blank).href);await enter(page);
-  async function importProfile(existing=false){await page.locator('#dock-import').click();await page.locator('#import').setInputFiles(csv);await expect(page.locator('#csv-mapping')).toBeVisible();
-   if(existing)await page.locator('#csv-account').selectOption({label:'Invented Bankline QA'});else await page.locator('#csv-account-name').fill('Invented Bankline QA');
-   await page.locator('#preview-csv').click();await expect(page.locator('#import-preview')).toBeVisible();await page.locator('#apply-import').click();await expect(page.locator('#import-panel')).toBeHidden();}
-  await importProfile();await expect(page.locator('#spending')).toContainText('£12.34');await importProfile(true);
-  const saved=await save(page,info,'#save-html',profile.id+'-saved.html'),raw=await fs.readFile(saved,'utf8'),ledger=inert(raw,'ledger-data');
-  expect(ledger.transactions.map(t=>t.amount_minor)).toEqual(profile.expected_minor);expect(ledger.import_sources).toHaveLength(1);expect(ledger.import_sources[0].raw).toBe(profile.raw);expect(ledger.transaction_coverage.basis).toBe('observed');
-  const reopened=await browser.newContext({offline:true}),fresh=await reopened.newPage();await fresh.goto(pathToFileURL(saved).href);await enter(fresh);await expect(fresh.locator('#spending')).toContainText('£12.34');await reopened.close();
-  // Clearing the optional currency mapping cannot hide an explicit foreign account currency.
-  if(profile.id==='rbs-bankline-statement-signed'){
-   for(const [name,raw] of [['foreign-account',profile.raw.replace('GBP','EUR')],['mixed-account',profile.raw.replace('00000000','00000001')]]){
-    const bad=info.outputPath(name+'.csv');await fs.writeFile(bad,raw);await page.locator('#dock-import').click();await page.locator('#import').setInputFiles(bad);await expect(page.locator('#csv-mapping')).toBeVisible();
-    await page.locator('#csv-account').selectOption({label:'Invented Bankline QA'});if(name==='foreign-account')await page.locator('#map-currency').selectOption('-1');
-    await page.locator('#preview-csv').click();await expect(page.locator('#import-error')).toBeVisible();await expect(page.locator('#import-preview')).toBeHidden();
-    await page.locator('#discard-import').click();await page.locator('#import-panel [data-close-dialog]').click();await expect(page.locator('#spending')).toContainText('£12.34');
-   }
-  }
-  const after=await save(page,info,'#save-html',profile.id+'-after-probes.html');expect(inert(await fs.readFile(after,'utf8'),'ledger-data')).toEqual(ledger);
-  expect(errors).toEqual([]);expect(external).toEqual([]);await context.close();
- }
-});
-
-
 test('reduced-motion explicit header controls advance and pause history', async ({browser}) => {
   for(const entry of ['dock','compact','expanded']){
     const context=await browser.newContext({reducedMotion:'reduce'}),page=await context.newPage(),errors=[];
@@ -488,7 +490,8 @@ test('reduced-motion explicit header controls advance and pause history', async 
 });
 
 
-test('named-month and statement-product imports retain exact fictional facts across saved copies', async ({browser},info)=>{
+test('documented Bankline, named-month and statement-product imports retain exact fictional facts across saved copies', async ({browser},info)=>{
+ await banklineChecks(browser,info);
  const profiles=[
   {id:'lloyds-native-layout',raw:"Transaction Date,Transaction Type,Sort Code,Account Number,Transaction Description,Debit Amount,Credit Amount,Balance\n01/06/2026,DEB,'00-00-00,00000000,Invented workshop,12.34,,0\n02/06/2026,FPI,'00-00-00,00000000,Invented funding,,100.01,0",expected:[-1234,10001],spending:'£12.34'},
   {id:'natwest-named-month',raw:'Date,Type,Description,Value,Balance,Account Name,Account Number\n01 Jun 2026,POS,Invented supplies,-9.87,0,Invented account,000000-00000000\n02 Jun 2026,FPI,Invented funding,200.00,0,Invented account,000000-00000000',expected:[-987,20000],spending:'£9.87'},
