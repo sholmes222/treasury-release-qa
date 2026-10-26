@@ -5,7 +5,7 @@ const { pathToFileURL } = require('node:url');
 const crypto = require('node:crypto');
 
 const origin = 'https://the-treasury.samuelsmanuals.com';
-const blankHash = '553a4f8b77cfc37466d9c1ac88f040f4177a5285850d2815fe810fb89b4f3b4e';
+const blankHash = 'e41cad11a5b01269eb934e6f161b7d07c34ceb4b797885cb54f6a182bd860d94';
 const fixture = path.resolve(__dirname, '../fixtures/payments.csv');
 const note = 'Fictional QA: keep a bicycle repair buffer.';
 const goal = 'Fictional QA buffer';
@@ -193,6 +193,7 @@ async function blankDownloadCheck(page, button, help, info, name, reference) {
 }
 
 test('downloaded file imports, edits, saves, reopens and restores without network', async ({ browser }, info) => {
+  const started=Date.now(),phase=label=>console.log(JSON.stringify({browser:info.project.name,phase:label,elapsedMs:Date.now()-started}));phase('start');
   // This executes only on the independent CI VM. Never on a desktop profile.
   const response = await fetch(origin + '/Treasury.html', {
     headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TreasuryReleaseQA/1.0)' },
@@ -209,7 +210,7 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
 
   const online = await browser.newContext();
   const publicPage = await online.newPage();
-  await publicPage.goto(origin + '/?qa=1.5.0');
+  await publicPage.goto(origin + '/?qa=1.5.0',{waitUntil:'domcontentloaded'});
   await expect(publicPage.locator('#treasury-favicon')).toHaveAttribute('href', '/favicon.png?v=1.5.0');
   for (const [name, mime, hash] of [['favicon.png','image/png','2e57cbc6f14c28ccf0dd0c60cb22fcd54ce16934c476528e9b8001f1cf5ba513'],['favicon.ico','image/vnd.microsoft.icon','3067b468e8430d44063885801d8f549f0dc6a84c88384bd9df86844bca0f2368']]) {
     const icon = await fetch(origin + '/' + name + '?v=1.5.0', {headers:{'User-Agent':'Mozilla/5.0 (compatible; TreasuryReleaseQA/1.0)'}});
@@ -225,8 +226,8 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   await blankDownloadCheck(publicPage, publicPage.locator('#guide-download'), publicPage.locator('#guide .download-help'), info, 'welcome', bytes.toString());
   await expect(publicPage.locator('#guide')).toBeVisible();
   await publicPage.locator('#guide-explore').click();
-  await demoLandingChecks(publicPage);
-  await appearanceChecks(publicPage);
+  await demoLandingChecks(publicPage);phase('demo-ready');
+  await appearanceChecks(publicPage);phase('appearances-ready');
   await blankDownloadCheck(publicPage, publicPage.locator('#dock-import'), null, info, 'dock', bytes.toString());
   await blankDownloadCheck(publicPage, publicPage.locator('#mode .download-link'), publicPage.locator('#mode .download-help'), info, 'notice', bytes.toString());
   await publicPage.locator('#data-open').click();
@@ -244,16 +245,7 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   expect(await publicPage.locator('#dock-import svg').evaluate(el=>getComputedStyle(el).display)).toBe('block');
   await publicPage.locator('#appearance-close').click();
 
-  await online.close();
-  const reduced=await browser.newContext({reducedMotion:'reduce'}),reducedPage=await reduced.newPage();
-  await reducedPage.goto(origin+'/?qa=1.5.0');await reducedPage.locator('#guide-explore').click();
-  await expect(reducedPage.locator('#guidance-content')).toBeVisible();
-  await expect(reducedPage.locator('#header-play')).toHaveAttribute('aria-pressed','false');
-  await expect(reducedPage.locator('#header-play')).toHaveAttribute('title',/Reduced motion/);
-  await reducedPage.locator('#header-play').click();
-  await expect(reducedPage.locator('#header-play')).toHaveAttribute('aria-pressed','true');
-  await reduced.close();
-
+  await online.close();phase('public-downloads-complete');
   const context = await browser.newContext({ acceptDownloads: true, offline: true });
   const page = await context.newPage();
   const errors = [], external = [];
@@ -261,7 +253,7 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   page.on('request', request => { if (/^https?:/.test(request.url())) external.push(request.url()); });
   await page.goto(pathToFileURL(blank).href);
   expect(new URL(page.url()).protocol).toBe('file:');
-  await enter(page);
+  await enter(page);phase('offline-ready');
   await expect(page.locator('footer').getByRole('button', { name: 'Getting started', exact: true })).toBeAttached();
   await expect(page.locator('#release-notes,#help-updates,.help-version')).toHaveCount(0);
   expect(bytes.toString()).not.toContain('Beta testing:');
@@ -450,10 +442,18 @@ test('documented Bankline files import and recover with precise currency and acc
 
 
 test('reduced-motion explicit header controls advance and pause history', async ({browser}) => {
-  for(const entry of ['compact','expanded']){
+  for(const entry of ['dock','compact','expanded']){
     const context=await browser.newContext({reducedMotion:'reduce'}),page=await context.newPage(),errors=[];
     page.on('pageerror',error=>errors.push(error.message));
-    await page.goto(origin+'/?qa=1.5.0');await page.locator('#guide-explore').click();
+    await page.goto(origin+'/?qa=1.5.0',{waitUntil:'domcontentloaded'});await page.locator('#guide-explore').click();
+    if(entry==='dock'){
+      await expect(page.locator('#guidance-content')).toBeVisible();
+      await expect(page.locator('#header-play')).toHaveAttribute('aria-pressed','false');
+      await expect(page.locator('#header-play')).toHaveAttribute('title',/Reduced motion/);
+      await page.locator('#header-play').click();
+      await expect(page.locator('#header-play')).toHaveAttribute('aria-pressed','true');
+      expect(errors).toEqual([]);await context.close();continue;
+    }
     if(entry==='expanded'){await page.locator('#header-history-toggle').click();await expect(page.locator('#header-detail')).toBeVisible();}
     const control=page.locator('#header-play-shortcut');
     // The same visible slider Play control moves into the expanded graph.
