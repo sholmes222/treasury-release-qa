@@ -5,7 +5,7 @@ const { pathToFileURL } = require('node:url');
 const crypto = require('node:crypto');
 
 const origin = 'https://the-treasury.samuelsmanuals.com';
-const blankHash = 'e41cad11a5b01269eb934e6f161b7d07c34ceb4b797885cb54f6a182bd860d94';
+const blankHash = '00fb74e49bb12b9dc6c9a244fabf90976d8022687db3cec4be35bc0e7732d1f2';
 const fixture = path.resolve(__dirname, '../fixtures/payments.csv');
 const note = 'Fictional QA: keep a bicycle repair buffer.';
 const goal = 'Fictional QA buffer';
@@ -20,14 +20,16 @@ async function enter(page) {
   if (await page.locator('#guide').isVisible()) await page.locator('#guide-explore').click();
 }
 async function save(page, info, button, filename) {
-  await page.locator('#data-open').click();
-  await page.locator('#save-copy').click();
+  const inline = page.locator('#unsaved-save-copy'), inlineSave = await inline.isVisible();
+  if (inlineSave) await inline.click();
+  else { await page.locator('#data-open').click(); await page.locator('#save-copy').click(); }
   const waiting = page.waitForEvent('download');
   await page.locator(button).click();
   const download = await waiting;
   const destination = info.outputPath(filename);
   await download.saveAs(destination);
   await page.getByRole('button', { name: 'Close save', exact: true }).click();
+  if (inlineSave) { await expect(inline).toBeHidden(); await expect(page.locator('#data-open')).toBeFocused(); }
   return destination;
 }
 async function importCSV(page, existing = false) {
@@ -286,6 +288,13 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   await blankDownloadCheck(publicPage, publicPage.locator('#help-entry'), publicPage.locator('#help-panel .download-help'), info, 'help', bytes.toString());
   await expect(publicPage.locator('#help-panel')).toBeVisible();
   await publicPage.locator('#help-close').click();
+  // The current source supplies new goal defaults; opening and closing retains notice dismissal.
+  await publicPage.locator('#banner-close').click();
+  await publicPage.locator('#investments [data-goal-add]').click();
+  await expect(publicPage.locator('#goal-start')).toHaveValue('7310.00');
+  await expect(publicPage.locator('#goal-date')).toHaveValue('2026-06-30');
+  await publicPage.locator('#goal-close').click();
+  await expect(publicPage.locator('#demo-banner')).toBeHidden();
   await publicPage.setViewportSize({width:390,height:844});
   await publicPage.locator('#appearance-open').click();
   const panelBox = await publicPage.locator('#appearance-panel').boundingBox();
@@ -335,6 +344,11 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   await page.locator('#guidance-cancel').click();
 
   await importCSV(page);
+  await expect(page.locator('#unsaved-save-copy')).toBeVisible();
+  await page.locator('#header-history-toggle').click();
+  await page.locator('#header-month-format').selectOption('short');
+  await page.locator('#header-detail-close').click();
+  await expect(page.locator('#header-month')).toHaveText('Jan');
   for (const [section, total] of [['cash', 'kpis'], ['spending', 'spend-note'], ['baseline', 'baseline-kpis'], ['charity', 'giving-total'], ['investments', 'savings-kpis'], ['home', 'mortgage-kpis'], ['income', 'income-kpis']]) {
     await expect(page.locator('#' + section + ' > .section-head #' + total)).toHaveCount(1);
   }
@@ -401,6 +415,7 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   const ledger = inert(raw, 'ledger-data'), view = inert(raw, 'view-state');
   expect(ledger).toEqual(inert(beforeTour, 'ledger-data'));
   expect(view.appearance.colors).toBe('gold_white');
+  expect(view.headerMonthFormat).toBe('short');
   for (const key of ['goals', 'drafts', 'folded']) expect(view[key]).toEqual(inert(beforeTour, 'view-state')[key]);
   expect(ledger.transactions).toHaveLength(4);
   expect(ledger.transactions.reduce((sum, row) => sum + row.amount_minor, 0)).toBe(154001);
@@ -421,6 +436,7 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   await expect(second.locator('#spending')).toContainText('£959.99');
   await expect(second.locator('#guidance')).toContainText(note);
   await expect(second.locator('.goal-card')).toContainText(goal);
+  await expect(second.locator('#header-month')).toHaveText('Jan');
   await expect(second.locator('body')).toHaveAttribute('data-colors','gold_white');
   await second.locator('#appearance-open').click();await second.locator('#monochrome-colors').uncheck();await second.locator('#appearance-close').click();
   await second.reload();await enter(second);await expect(second.locator('body')).toHaveAttribute('data-colors','gold_white');
@@ -451,6 +467,7 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   await expect(third.locator('body')).toHaveAttribute('data-colors','gold_white');
   await expect(third.locator('#guidance')).toContainText(note);
   await expect(third.locator('.goal-card')).toContainText(goal);
+  await expect(third.locator('#header-month')).toHaveText('Jan');
   expect(errors).toEqual([]);
   expect(external).toEqual([]);
   await restored.close();
