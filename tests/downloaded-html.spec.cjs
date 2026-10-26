@@ -84,11 +84,19 @@ async function demoLandingChecks(page) {
 
 async function signedStackChecks(page) {
   const result=await page.evaluate(()=>{
-    const canvas=document.createElement('canvas');canvas.width=canvas.height=1;const ctx=canvas.getContext('2d'),rgb=color=>{ctx.clearRect(0,0,1,1);ctx.fillStyle=color;ctx.fillRect(0,0,1,1);return [...ctx.getImageData(0,0,1,1).data].slice(0,3);};
+    const canvas=document.createElement('canvas');canvas.width=canvas.height=1;
+    const ctx=canvas.getContext('2d'),convertedColors=new Map();
+    const rgb=color=>{
+      if(convertedColors.has(color))return convertedColors.get(color);
+      ctx.clearRect(0,0,1,1);ctx.fillStyle=color;ctx.fillRect(0,0,1,1);
+      const converted=[...ctx.getImageData(0,0,1,1).data].slice(0,3);
+      convertedColors.set(color,converted);return converted;
+    };
     const zero=Number(document.querySelector('#flow-chart svg line[stroke-width="1.2"]').getAttribute('y1'));
     const rows=[...document.querySelectorAll('#flow-chart [data-flow-side]')].map(e=>({side:e.dataset.flowSide,part:e.dataset.flowPart,color:rgb(getComputedStyle(e).fill),y:Number(e.getAttribute('y')),height:Number(e.getAttribute('height'))}));
-    return {zero,rows};
+    return {zero,rows,colorConversions:convertedColors.size};
   });
+  console.log(JSON.stringify({phase:'signed-stack-colour-reads',bars:result.rows.length,conversions:result.colorConversions}));
   const incoming=result.rows.filter(r=>r.side==='incoming'),outgoing=result.rows.filter(r=>r.side==='outgoing');
   expect(incoming.length).toBeGreaterThan(0);expect(outgoing.length).toBeGreaterThan(0);
   expect(incoming.every(r=>r.color[1]>r.color[0]&&r.color[1]>r.color[2]&&r.y+r.height<=result.zero+.01)).toBe(true);
