@@ -227,7 +227,7 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   await expect(publicPage.locator('#guide')).toBeVisible();
   await publicPage.locator('#guide-explore').click();
   await demoLandingChecks(publicPage);phase('demo-ready');
-  await appearanceChecks(publicPage);phase('appearances-ready');
+  phase('public-landing-ready');
   await blankDownloadCheck(publicPage, publicPage.locator('#dock-import'), null, info, 'dock', bytes.toString());
   await blankDownloadCheck(publicPage, publicPage.locator('#mode .download-link'), publicPage.locator('#mode .download-help'), info, 'notice', bytes.toString());
   await publicPage.locator('#data-open').click();
@@ -409,7 +409,13 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
 });
 
 
-test('documented Bankline files import and recover with precise currency and account boundaries', async ({browser},info)=>{
+test('public appearance and documented Bankline imports preserve display and account boundaries', async ({browser},info)=>{
+ // The six-theme matrix has its own context and shares this short case's existing budget.
+ const appearanceStarted=Date.now(),appearanceContext=await browser.newContext(),appearancePage=await appearanceContext.newPage(),appearanceErrors=[];
+ appearancePage.on('pageerror',error=>appearanceErrors.push(error.message));
+ await appearancePage.goto(origin+'/?qa=1.5.0',{waitUntil:'domcontentloaded'});await enter(appearancePage);
+ await appearanceChecks(appearancePage);expect(appearanceErrors).toEqual([]);await appearanceContext.close();
+ console.log(JSON.stringify({browser:info.project.name,phase:'appearance-matrix-complete',elapsedMs:Date.now()-appearanceStarted}));
  const profiles=require('../fixtures/bank-layouts.json').profiles.filter(p=>['rbs-bankline-statement-signed','rbs-bankline-transaction-search'].includes(p.id));
  const response=await fetch(origin+'/Treasury.html',{headers:{'User-Agent':'Mozilla/5.0 (compatible; TreasuryReleaseQA/1.0)'},redirect:'error',signal:AbortSignal.timeout(30000)});
  expect(response.status).toBe(200);const bytes=Buffer.from(await response.arrayBuffer());expect(crypto.createHash('sha256').update(bytes).digest('hex')).toBe(blankHash);
