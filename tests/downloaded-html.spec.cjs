@@ -5,8 +5,8 @@ const { pathToFileURL } = require('node:url');
 const crypto = require('node:crypto');
 
 const origin = 'https://the-treasury.samuelsmanuals.com';
-const blankHash = '9588fc6b09044d64177cae56def8cbe2e6091a5be87cb4e5b4376499a68d157b';
-const releaseVersion = '1.8.0';
+const blankHash = 'd60fee5928a2a7862833d5c458cca8017ccebccc8e4dfcf8785dd0eea92d0115';
+const releaseVersion = '1.8.1';
 const fixture = path.resolve(__dirname, '../fixtures/payments.csv');
 const note = 'Fictional QA: keep a bicycle repair buffer.';
 const goal = 'Fictional QA buffer';
@@ -115,6 +115,7 @@ async function appearanceChecks(page, draft = false) {
   await expect(page.locator('dialog[open]')).toHaveCount(0);
   await expect(page.locator('#appearance-open')).toHaveAttribute('aria-expanded', 'true');
   for (const skin of ['sleek', 'medieval', 'gold']) {
+    const phaseStart=Date.now();
     await page.locator('[data-skin-choice="' + skin + '"]').click();
     for (const mode of ['light', 'dark']) {
       const current = await page.locator('body').getAttribute('data-mode');
@@ -124,6 +125,7 @@ async function appearanceChecks(page, draft = false) {
       await expect(page.locator('#appearance-panel')).toBeVisible();
       expect(await page.evaluate(() => getComputedStyle(document.querySelector('#help')).color === getComputedStyle(document.querySelector('#guidance h2')).color)).toBe(true);
       if (!draft) await signedStackChecks(page);
+      console.log(JSON.stringify({phase:'appearance-mode',skin,mode,elapsedMs:Date.now()-phaseStart}));
       if (draft) await expect(page.locator('#guidance-text')).toHaveValue('Fictional QA unfinished appearance draft.');
     }
   }
@@ -216,7 +218,7 @@ async function r92WorkflowChecks(page, info, raw, originalSaved) {
   const seededFile=info.outputPath('R92-fictional-workflows.html');
   await fs.writeFile(seededFile,replaceBlock(raw,'ledger-data',seeded));
   await page.goto(pathToFileURL(seededFile).href); await enter(page);
-  const openPayments=async()=>{await page.locator('[data-records-open="payments-details-summary"]').click();};
+  const openPayments=async()=>{const category=page.locator('#categories [data-category]').filter({hasText:anchor.category});await category.click();await expect(page.locator('#payments-details-summary').locator('..')).toHaveAttribute('open','');};
   const review=()=>page.locator('[data-regularity-review="'+anchor.id+'"]');
   await openPayments(); await review().click();
   await expect(page.locator('#regularity-choice')).toHaveValue('not_reviewed');
@@ -397,6 +399,10 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   await publicPage.locator('#goal-close').click();
   await expect(publicPage.locator('#demo-banner')).toBeHidden();
   await publicPage.setViewportSize({width:390,height:844});
+  const compactHeader=await publicPage.evaluate(()=>{const h=document.querySelector('.treasury-brand h1').getBoundingClientRect(),v=document.querySelector('#header-amount').getBoundingClientRect();return {topDifference:Math.abs(h.top-v.top),titleRight:h.right,valueLeft:v.left,navWrap:getComputedStyle(document.querySelector('.section-nav')).flexWrap};});
+  expect(compactHeader.topDifference).toBeLessThan(2);
+  expect(compactHeader.titleRight).toBeLessThanOrEqual(compactHeader.valueLeft);
+  expect(compactHeader.navWrap).toBe('wrap');
   await publicPage.locator('#appearance-open').click();
   const panelBox = await publicPage.locator('#appearance-panel').boundingBox();
   expect(panelBox.x).toBeGreaterThanOrEqual(0);expect(panelBox.x+panelBox.width).toBeLessThanOrEqual(390);
