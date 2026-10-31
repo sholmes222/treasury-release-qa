@@ -5,7 +5,8 @@ const { pathToFileURL } = require('node:url');
 const crypto = require('node:crypto');
 
 const origin = 'https://the-treasury.samuelsmanuals.com';
-const blankHash = '00fb74e49bb12b9dc6c9a244fabf90976d8022687db3cec4be35bc0e7732d1f2';
+const blankHash = '9588fc6b09044d64177cae56def8cbe2e6091a5be87cb4e5b4376499a68d157b';
+const releaseVersion = '1.8.0';
 const fixture = path.resolve(__dirname, '../fixtures/payments.csv');
 const note = 'Fictional QA: keep a bicycle repair buffer.';
 const goal = 'Fictional QA buffer';
@@ -48,8 +49,8 @@ async function importCSV(page, existing = false) {
 async function demoLandingChecks(page) {
   await expect(page.locator('#guidance .section-toggle')).toHaveAttribute('aria-expanded','true');
   await expect(page.locator('#guidance-content')).toBeVisible();
-  await expect(page.locator('#flow-chart [data-month]')).toHaveCount(36);
-  expect(await page.locator('[data-notable]').count()).toBeGreaterThanOrEqual(27);
+  await expect(page.locator('#flow-chart [data-month]')).toHaveCount(12);
+  expect(await page.locator('[data-notable]').count()).toBe(19);
   await expect(page.locator('#guidance > .section-head [aria-label="Guidance help"]')).toHaveCount(1);
   const plan=page.locator('#baseline > .section-head [data-manual-launch^="baseline:"]');
   await expect(plan).toHaveText('Add plan');
@@ -61,10 +62,10 @@ async function demoLandingChecks(page) {
   await help.focus();await expect(page.locator('#chart-tooltip')).toBeVisible();
   await expect(page.locator('#chart-tooltip')).toContainText('Recorded account balances');
   await help.press('Escape');await expect(page.locator('#chart-tooltip')).not.toBeVisible();
-  expect(await page.locator('#savings-kpis .kpi small').evaluateAll(nodes=>nodes.length===2&&nodes.every(e=>!e.classList.contains('sr-only')&&e.textContent.includes('2026-06-30')))).toBe(true);
+  expect(await page.locator('#savings-kpis .kpi small').evaluateAll(nodes=>nodes.length===2&&nodes.every(e=>!e.classList.contains('sr-only')&&e.textContent.includes('2026-10-31')))).toBe(true);
   await expect(page.locator('#show-markers')).toHaveCount(0);
-  await expect(page.locator('[data-notable]:checked')).toHaveCount(3);
-  await expect(page.locator('.payment-marker')).toHaveCount(3);
+  await expect(page.locator('[data-notable]:checked')).toHaveCount(5);
+  await expect(page.locator('.payment-marker')).toHaveCount(5);
   expect(await page.evaluate(()=>{const hit=document.querySelector('#flow-chart .month-hit'),bottom=Number(hit.getAttribute('y'))+Number(hit.getAttribute('height'));return [...document.querySelectorAll('#flow-chart .payment-marker line')].every(e=>Number(e.getAttribute('y2'))===bottom);})).toBe(true);
   await expect(page.locator('#header-play')).toHaveAttribute('aria-pressed','true');
   const first=await page.locator('#header-slider').getAttribute('aria-valuetext');
@@ -74,13 +75,13 @@ async function demoLandingChecks(page) {
   const selectedPayment=page.locator('[data-notable="'+selectedId+'"]');
   await selectedPayment.uncheck();
   await expect(selectedPayment).not.toBeChecked();
-  await expect(page.locator('.payment-marker')).toHaveCount(2);
+  await expect(page.locator('.payment-marker')).toHaveCount(4);
   await page.locator('#guidance .section-toggle').click();
   await page.locator('#header-play').click();
   await expect(page.locator('#header-play')).toHaveAttribute('aria-pressed','false');
   await page.reload();await page.locator('#guide-explore').click();
   await expect(page.locator('#guidance .section-toggle')).toHaveAttribute('aria-expanded','true');
-  await expect(page.locator('[data-notable]:checked')).toHaveCount(3);
+  await expect(page.locator('[data-notable]:checked')).toHaveCount(5);
   await expect(page.locator('#header-play')).toHaveAttribute('aria-pressed','true');
 }
 
@@ -202,6 +203,102 @@ async function blankDownloadCheck(page, button, help, info, name, reference) {
   expect(spending.scope).toBe('treasury-spending-view');
 }
 
+// R92 uses only this test's existing offline page and context. All supplement data is invented.
+async function r92WorkflowChecks(page, info, raw, originalSaved) {
+  const seeded = structuredClone(inert(raw, 'ledger-data'));
+  const anchor = seeded.transactions.find(row => row.merchant === 'Fictional landlord rent');
+  anchor.recurring = true; anchor.note = 'Fictional original-source flag retained independently';
+  seeded.extensions = {...seeded.extensions, qa_retained: {keep:[false,0,null]}};
+  const observations = Array.from({length:9}, (_,i) => ({account_id:'qa-savings',label:'Fictional QA savings',kind:'cash',purpose:'savings',date:i===8?'2026-01-04':'2025-'+String(i+5).padStart(2,'0')+'-04',value_minor:10000+i,basis:'measured'}));
+  seeded.holdings = [observations.at(-1)]; seeded.holding_history = observations.slice(0,-1);
+  seeded.actions = [{id:'qa-action',label:'Fictional QA check tyre',date:'2026-01-05',status:'confirmed'}];
+  const replaceBlock = (html,id,value) => html.replace(new RegExp('(<script type="application/json" id="'+id+'">)[\\s\\S]*?(</script>)'),(_all,start,end)=>start+JSON.stringify(value).replace(/</g,'\\u003c')+end);
+  const seededFile=info.outputPath('R92-fictional-workflows.html');
+  await fs.writeFile(seededFile,replaceBlock(raw,'ledger-data',seeded));
+  await page.goto(pathToFileURL(seededFile).href); await enter(page);
+  const openPayments=async()=>{await page.locator('[data-records-open="payments-details-summary"]').click();};
+  const review=()=>page.locator('[data-regularity-review="'+anchor.id+'"]');
+  await openPayments(); await review().click();
+  await expect(page.locator('#regularity-choice')).toHaveValue('not_reviewed');
+  const captured=await page.locator('#regularity-preview').inputValue();
+  expect(JSON.parse(captured).selections).toEqual([{id:anchor.id,before:JSON.stringify(anchor)}]);
+  await page.locator('#regularity-choice').selectOption('regular');
+  await page.locator('#manual-record').press('Escape');
+  const previewFile=await save(page,info,'#save-html','R92-saved-review.html'),previewRaw=await fs.readFile(previewFile,'utf8');
+  expect(inert(previewRaw,'ledger-data')).toEqual(seeded);
+  const previewView=inert(previewRaw,'view-state');
+  expect(previewView.drafts['regularity:'+anchor.id]['regularity-preview']).toBe(captured);
+  await page.goto(pathToFileURL(previewFile).href); await enter(page); await openPayments(); await review().click();
+  await expect(page.locator('#regularity-preview')).toHaveValue(captured);
+  await expect(page.locator('#regularity-choice')).toHaveValue('regular');
+  const confirmationStarted=await page.evaluate(()=>Date.now());
+  await page.locator('#manual-record button[type="submit"]').click();
+  const confirmationEnded=await page.evaluate(()=>Date.now());
+  await expect(review()).toHaveText('Regular costs');
+  const confirmedFile=await save(page,info,'#save-html','R92-confirmed-review.html'),confirmed=inert(await fs.readFile(confirmedFile,'utf8'),'ledger-data');
+  const expected=structuredClone(seeded),priorEdits=seeded.transaction_edits||[],audit=confirmed.transaction_edits.at(-1);
+  const auditId=audit.id.match(/^edit-(\d+)-(\d+)$/);
+  expect(auditId).not.toBeNull();
+  expect([Number(auditId[1])>=confirmationStarted,Number(auditId[1])<=confirmationEnded,Number(auditId[2])===priorEdits.length]).toEqual([true,true,true]);
+  expected.transactions.find(row=>row.id===anchor.id).regularity='regular';
+  expected.transaction_edits=[...priorEdits,{id:audit.id,row_id:anchor.id,match:JSON.stringify([anchor.date,anchor.merchant,anchor.amount_minor]),changes:{regularity:'regular'}}];
+  expect(confirmed).toEqual(expected); // Includes imported sources, corrections and arbitrary row evidence.
+  expect(confirmed.transactions.find(row=>row.id===anchor.id).recurring).toBe(true);
+  await page.locator('#undo-change').click(); await expect(review()).toHaveText('Not reviewed');
+  // The direct field is independent of the retained original recurring checkbox.
+  await page.locator('#payments tr[data-payment-id="'+anchor.id+'"] .editable-text').click();
+  await expect(page.locator('#payment-regularity')).toHaveValue('not_reviewed');
+  await expect(page.locator('#payment-recurring')).toBeChecked();
+  await page.locator('#payment-regularity').selectOption('other'); await page.locator('#manual-cancel').click();
+  await expect(review()).toHaveText('Not reviewed');
+
+  const balances=page.locator('#manual-balance-list');
+  await balances.locator('summary').click();
+  await expect(balances.locator('.manual-record-row')).toHaveCount(6);
+  await expect(balances.locator('[data-editing-order]')).toHaveValue('newest');
+  await expect(balances.locator('.manual-record-row').first()).toContainText('2026-01-04');
+  await balances.locator('[data-editing-more]').click(); await expect(balances.locator('.manual-record-row')).toHaveCount(9);
+  await balances.locator('[data-editing-order]').selectOption('oldest');
+  await expect(balances.locator('.manual-record-row').first()).toContainText('2025-05-04');
+  await balances.locator('[data-editing-search]').fill('qa-savings 2025-07');
+  await expect(balances.locator('.manual-record-row')).toHaveCount(1);
+  await expect(balances.locator('.manual-record-row')).toContainText('2025-07-04');
+
+  if(await page.locator('#coming .section-toggle').getAttribute('aria-expanded')==='false')await page.locator('#coming .section-toggle').click();
+  await page.locator('#actions [data-action-complete]').click();
+  await expect(page.locator('#actions .completed-group')).not.toHaveAttribute('open');
+  await expect(page.locator('#actions .completed-group > summary')).toContainText('Completed, 1');
+  await page.locator('#actions .completed-group > summary').click();
+  await expect(page.locator('#actions .completed-group')).toContainText('Fictional QA check tyre');
+  await expect(page.locator('#actions [data-action-complete]')).toHaveText('Reopen');
+  await page.locator('#undo-change').click();
+  await expect(page.locator('#actions .completed-group')).toHaveCount(0);
+  await expect(page.locator('#actions [data-action-complete]')).toHaveText('Done');
+
+  await page.locator('#add-balance-open').click();
+  await page.locator('#balance-account').selectOption({label:'Fictional QA savings (savings)'});
+  await expect(page.locator('#balance-label')).toHaveValue('Fictional QA savings');
+  await expect(page.locator('#balance-label')).toHaveAttribute('readonly','');
+  await expect(page.locator('#balance-kind')).toHaveValue('savings');
+  await expect(page.locator('#balance-kind')).toBeDisabled();
+  await page.locator('#balance-account').selectOption('new');
+  await expect(page.locator('#balance-label')).not.toHaveAttribute('readonly');
+  await expect(page.locator('#balance-kind')).toBeEnabled();
+  await page.locator('#balance-label').fill('Fictional QA unfinished new account');
+  await page.locator('#balance-kind').selectOption('current');
+  await page.getByRole('button',{name:'Close details',exact:true}).click();
+  await page.locator('#add-balance-open').click();
+  await expect(page.locator('#balance-account')).toHaveValue('new');
+  await expect(page.locator('#balance-label')).toHaveValue('Fictional QA unfinished new account');
+  await expect(page.locator('#balance-kind')).toHaveValue('current');
+  await page.getByRole('button',{name:'Close details',exact:true}).click();
+  const unchangedFile=await save(page,info,'#save-html','R92-after-cancel-and-undo.html'),unchangedRaw=await fs.readFile(unchangedFile,'utf8');
+  expect(inert(unchangedRaw,'ledger-data')).toEqual(seeded);
+  expect(inert(unchangedRaw,'view-state').drafts['balance:new']['balance-label']).toBe('Fictional QA unfinished new account');
+  expect(inert(unchangedRaw,'source-bundle')).toEqual(inert(raw,'source-bundle'));
+  await page.goto(pathToFileURL(originalSaved).href); await enter(page);
+}
+
 async function banklineChecks(browser,info){
  const profiles=require('../fixtures/bank-layouts.json').profiles.filter(p=>['rbs-bankline-statement-signed','rbs-bankline-transaction-search'].includes(p.id));
  const response=await fetch(origin+'/Treasury.html',{headers:{'User-Agent':'Mozilla/5.0 (compatible; TreasuryReleaseQA/1.0)'},redirect:'error',signal:AbortSignal.timeout(30000)});
@@ -237,7 +334,7 @@ test('public appearance preserves semantic and gold-white display across themes'
  // Run the full appearance matrix in a fresh browser before local-file contexts.
  const appearanceStarted=Date.now(),appearanceContext=await browser.newContext(),appearancePage=await appearanceContext.newPage(),appearanceErrors=[];
  appearancePage.on('pageerror',error=>appearanceErrors.push(error.message));
- await appearancePage.goto(origin+'/?qa=1.5.0',{waitUntil:'domcontentloaded'});await enter(appearancePage);
+ await appearancePage.goto(origin+'/?qa='+releaseVersion,{waitUntil:'domcontentloaded'});await enter(appearancePage);
  await appearanceChecks(appearancePage);expect(appearanceErrors).toEqual([]);await appearanceContext.close();
  console.log(JSON.stringify({browser:info.project.name,phase:'appearance-matrix-complete',elapsedMs:Date.now()-appearanceStarted}));
 });
@@ -260,7 +357,7 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
 
   const online = await browser.newContext();
   const publicPage = await online.newPage();
-  await publicPage.goto(origin + '/?qa=1.5.0',{waitUntil:'domcontentloaded'});
+  await publicPage.goto(origin + '/?qa='+releaseVersion,{waitUntil:'domcontentloaded'});
   await expect(publicPage.locator('#treasury-favicon')).toHaveAttribute('href', '/favicon.png?v=1.5.0');
   for (const [name, mime, hash] of [['favicon.png','image/png','2e57cbc6f14c28ccf0dd0c60cb22fcd54ce16934c476528e9b8001f1cf5ba513'],['favicon.ico','image/vnd.microsoft.icon','3067b468e8430d44063885801d8f549f0dc6a84c88384bd9df86844bca0f2368']]) {
     const icon = await fetch(origin + '/' + name + '?v=1.5.0', {headers:{'User-Agent':'Mozilla/5.0 (compatible; TreasuryReleaseQA/1.0)'}});
@@ -277,6 +374,10 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   await expect(publicPage.locator('#guide')).toBeVisible();
   await publicPage.locator('#guide-explore').click();
   await demoLandingChecks(publicPage);phase('demo-ready');
+  await publicPage.locator('#period').selectOption('3');
+  await expect(publicPage.locator('#flow-chart [data-month]')).toHaveCount(3);
+  await publicPage.locator('#period').selectOption('all');
+  await expect(publicPage.locator('#flow-chart [data-month]')).toHaveCount(40);
   phase('public-landing-ready');
   await blankDownloadCheck(publicPage, publicPage.locator('#dock-import'), null, info, 'dock', bytes.toString());
   await blankDownloadCheck(publicPage, publicPage.locator('#mode .download-link'), publicPage.locator('#mode .download-help'), info, 'notice', bytes.toString());
@@ -291,8 +392,8 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   // The current source supplies new goal defaults; opening and closing retains notice dismissal.
   await publicPage.locator('#banner-close').click();
   await publicPage.locator('#investments [data-goal-add]').click();
-  await expect(publicPage.locator('#goal-start')).toHaveValue('7310.00');
-  await expect(publicPage.locator('#goal-date')).toHaveValue('2026-06-30');
+  await expect(publicPage.locator('#goal-start')).toHaveValue('250.00');
+  await expect(publicPage.locator('#goal-date')).toHaveValue('2026-10-31');
   await publicPage.locator('#goal-close').click();
   await expect(publicPage.locator('#demo-banner')).toBeHidden();
   await publicPage.setViewportSize({width:390,height:844});
@@ -301,6 +402,14 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   expect(panelBox.x).toBeGreaterThanOrEqual(0);expect(panelBox.x+panelBox.width).toBeLessThanOrEqual(390);
   expect(await publicPage.locator('#dock-import svg').evaluate(el=>getComputedStyle(el).display)).toBe('block');
   await publicPage.locator('#appearance-close').click();
+  const rowWidths = await publicPage.locator('#categories').evaluate(el=>({table:el.closest('table').getBoundingClientRect().width,rows:[...el.querySelectorAll('.category-row')].filter(row=>row.getBoundingClientRect().height>0).map(row=>row.getBoundingClientRect().width)}));
+  expect(rowWidths.rows.length).toBeGreaterThan(0);expect(rowWidths.rows.every(width=>Math.abs(width-rowWidths.table)<2)).toBe(true);
+  await publicPage.locator('[data-control-select]').first().selectOption('outside');
+  await expect(publicPage.locator('#spending-filter-state')).toContainText('temporary');
+  await publicPage.locator('#spending-reset-filters').click();
+  await expect(publicPage.locator('[data-control-select]').first()).toHaveValue('recorded');
+  await expect(publicPage.locator('#spending-reset-filters')).toBeDisabled();
+
 
   await online.close();phase('public-downloads-complete');
   const context = await browser.newContext({ acceptDownloads: true, offline: true });
@@ -359,7 +468,8 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   await page.getByRole('button', { name: 'Add payment', exact: true }).click();
   await page.locator('#payment-date').fill('2026-01-04');
   await page.locator('#payment-name').fill('Fictional QA coffee');
-  await page.locator('#payment-amount').fill('-12.34');
+  await page.locator('#payment-kind').selectOption('spending');
+  await page.locator('#payment-amount').fill('12.34');
   await page.locator('#payment-category').fill('Food');
   await page.locator('#manual-record').getByRole('button', { name: 'Save changes', exact: true }).click();
   await expect(page.locator('#spending')).toContainText('£959.99');
@@ -384,6 +494,7 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   await expect(page.locator('#help-panel')).toContainText('Set up your Treasury');
   await expect(page.locator('#help-panel')).toContainText('The app does not encrypt them');
   await expect(page.locator('#help-setup')).toBeVisible();
+  await page.setViewportSize({width:390,height:844});
   await page.locator('#help-tour').click();
   for (let step = 1; step <= 6; step++) {
     await expect(page.locator('#tour-count')).toHaveText('Walkthrough · ' + step + ' of 6');
@@ -392,6 +503,11 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
     await expect(page.locator('#tour-dimmer')).toBeVisible();
     await page.locator('#tour-try').click();
     await expect(page.locator('#tour-try')).toHaveText('Show guide');
+    if (step === 2) {
+      const target = await page.locator('#period').evaluate(el=>{const r=el.getBoundingClientRect();return {hit:document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.id,top:r.top,bottom:r.bottom,height:innerHeight};});
+      expect(target.hit).toBe('period'); expect(target.top).toBeGreaterThanOrEqual(0); expect(target.bottom).toBeLessThan(target.height);
+      await expect(page.locator('#period')).toBeFocused();
+    }
     if (step === 3) await expect(page.locator('#tour-try')).not.toBeFocused();
     if (step === 6) {
       await page.locator('#data-open').click();
@@ -408,6 +524,7 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   await expect(page.locator('#help-panel')).toBeVisible();
   await expect(page.locator('#help-entry')).toBeFocused();
   await expect(page.locator('#help-entry')).toHaveText('Open import');
+  await page.setViewportSize({width:1280,height:720});
   await expect(page.locator('#help-setup')).toContainText('Your local copy is ready');
   await page.getByRole('button', { name: 'Close help', exact: true }).click();
   const saved = await save(page, info, '#save-html', 'My-Treasury.html');
@@ -424,6 +541,7 @@ test('downloaded file imports, edits, saves, reopens and restores without networ
   expect(view.goals.some(row => row.label === goal && row.target_minor === 50000)).toBe(true);
   const source = inert(bytes.toString(), 'source-bundle');
   expect(inert(raw, 'source-bundle')).toEqual(source);
+  await r92WorkflowChecks(page,info,raw,saved);phase('r92-workflows-complete');
   await context.close();
 
   // Reopen the actual saved file in a fresh context, with no remembered browser state.
@@ -478,7 +596,7 @@ test('reduced-motion explicit header controls advance and pause history', async 
   for(const entry of ['dock','compact','expanded']){
     const context=await browser.newContext({reducedMotion:'reduce'}),page=await context.newPage(),errors=[];
     page.on('pageerror',error=>errors.push(error.message));
-    await page.goto(origin+'/?qa=1.5.0',{waitUntil:'domcontentloaded'});await page.locator('#guide-explore').click();
+    await page.goto(origin+'/?qa='+releaseVersion,{waitUntil:'domcontentloaded'});await page.locator('#guide-explore').click();
     if(entry==='dock'){
       await expect(page.locator('#guidance-content')).toBeVisible();
       await expect(page.locator('#header-play')).toHaveAttribute('aria-pressed','false');
