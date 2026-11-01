@@ -5,8 +5,8 @@ const { pathToFileURL } = require('node:url');
 const crypto = require('node:crypto');
 
 const origin = 'https://the-treasury.samuelsmanuals.com';
-const blankHash = 'd60fee5928a2a7862833d5c458cca8017ccebccc8e4dfcf8785dd0eea92d0115';
-const releaseVersion = '1.8.1';
+const blankHash = 'a419a1e645148639eecfeaa30a2148935616bdcb0fee40349054bf43da2a66b2';
+const releaseVersion = '1.8.2';
 const fixture = path.resolve(__dirname, '../fixtures/payments.csv');
 const note = 'Fictional QA: keep a bicycle repair buffer.';
 const goal = 'Fictional QA buffer';
@@ -110,15 +110,6 @@ async function signedStackChecks(page) {
 }
 
 async function appearanceChecks(page, draft = false) {
-  // Public-only timing: keep every journey and assertion while identifying slow redraws.
-  page.on('console', message=>{if(message.text().startsWith('TREASURY_REDRAW_TIMING='))console.log(message.text());});
-  await page.evaluate(()=>{
-    for(const name of ['redrawAppearance','renderFlow','renderHistories','renderMortgage','renderBaseline']){
-      const original=window[name];if(typeof original!=='function'||original.treasuryTiming)continue;
-      const timed=function(...args){const start=performance.now();try{return original.apply(this,args);}finally{console.log('TREASURY_REDRAW_TIMING='+JSON.stringify({name,ms:Math.round(performance.now()-start)}));}};
-      timed.treasuryTiming=true;window[name]=timed;
-    }
-  });
   await page.locator('#appearance-open').click();
   await expect(page.locator('#appearance-panel')).toBeVisible();
   await expect(page.locator('dialog[open]')).toHaveCount(0);
