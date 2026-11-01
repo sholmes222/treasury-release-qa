@@ -5,8 +5,8 @@ const { pathToFileURL } = require('node:url');
 const crypto = require('node:crypto');
 
 const origin = 'https://the-treasury.samuelsmanuals.com';
-const blankHash = 'a419a1e645148639eecfeaa30a2148935616bdcb0fee40349054bf43da2a66b2';
-const releaseVersion = '1.8.2';
+const blankHash = 'd5b9a2beb05e957f2859f239f17f440f7dde0538b12277c9336bf100f4a4e910';
+const releaseVersion = '1.8.3';
 const fixture = path.resolve(__dirname, '../fixtures/payments.csv');
 const note = 'Fictional QA: keep a bicycle repair buffer.';
 const goal = 'Fictional QA buffer';
